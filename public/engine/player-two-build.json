@@ -1,0 +1,8 @@
+{
+  "sourceRevision": "c9ff3184cf1515648576a6641c05a11ef4089fb5",
+  "patch": "scripts/prepare-two-player.mjs",
+  "rust": "1.101.0-nightly (92ffebece 2026-10-28)",
+  "wasmBindgen": "0.2.114",
+  "builtAt": "2026-10-29T18:17:06.887Z",
+  "wasmSHA256": "50d6758e928121e76cb131a77decaa05ee7047d33904d9a339cba56b16e8efb2"
+}

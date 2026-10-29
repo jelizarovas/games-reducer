@@ -1,0 +1,56 @@
+{
+  "source": "https://jsgroth.dev/jgenesis-webgl/",
+  "downloadedAt": "2026-09-05T21:38:14.651Z",
+  "files": [
+    {
+      "file": "index.html",
+      "bytes": 29709,
+      "sha256": "82bffb1ab9a9d616e06264287d0ee571ac545bf2baede7a0f7dc68b103cefdd6"
+    },
+    {
+      "file": "js/ui.js",
+      "bytes": 4690,
+      "sha256": "e2f47f44cfd5ef0c277c776517c222b5c1d7fee1ba1795b398164e23c6304fa2"
+    },
+    {
+      "file": "js/idb.js",
+      "bytes": 5166,
+      "sha256": "096659a3291913c14f91e4faab05e79d776b8bda4857f2d01a99c2c1764a9cde"
+    },
+    {
+      "file": "js/audio-processor.js",
+      "bytes": 530,
+      "sha256": "fd6e698a695d1e7663014f9f8175f8c0221c531005632cdd12664b5bba78f8da"
+    },
+    {
+      "file": "js/polyfill.js",
+      "bytes": 939,
+      "sha256": "5b07aa84b347e0db129569a1655a520df093a24ed57311f18401c7dbe1d8e544"
+    },
+    {
+      "file": "pkg/jgenesis_web.js",
+      "bytes": 181090,
+      "sha256": "fdd7c7c2750dfdfea3d26b90f8db43d2401e0ac8305f21d878f25eeb850ab1df"
+    },
+    {
+      "file": "pkg/jgenesis_web_bg.wasm",
+      "bytes": 6919971,
+      "sha256": "00343df829888bafc78168830b8276bdf8fd7c2424a7421f10f2870ddbef07d1"
+    },
+    {
+      "file": "pkg/snippets/jgenesis-web-84ddb6bbedfb3632/js/idb.js",
+      "bytes": 5166,
+      "sha256": "096659a3291913c14f91e4faab05e79d776b8bda4857f2d01a99c2c1764a9cde"
+    },
+    {
+      "file": "pkg/snippets/jgenesis-web-84ddb6bbedfb3632/js/ui.js",
+      "bytes": 4690,
+      "sha256": "e2f47f44cfd5ef0c277c776517c222b5c1d7fee1ba1795b398164e23c6304fa2"
+    },
+    {
+      "file": "pkg/snippets/jgenesis-web-84ddb6bbedfb3632/js/polyfill.js",
+      "bytes": 939,
+      "sha256": "5b07aa84b347e0db129569a1655a520df093a24ed57311f18401c7dbe1d8e544"
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+node_modules/
+.cache/
+dist/
+data/
+test-results/
+vendor/
+.env
+engine-page.html
+.validation/

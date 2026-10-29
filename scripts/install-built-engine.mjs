@@ -1,0 +1,11 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import {createHash} from 'node:crypto';
+const built='.cache/engine-p2/pkg', dest='public/engine/pkg';
+if(!fs.existsSync(path.join(built,'jgenesis_web_bg.wasm')))throw new Error('Build the player-two engine first');
+const backup='.validation/engine-before-player-two';
+if(!fs.existsSync(backup))fs.cpSync(dest,backup,{recursive:true});
+fs.cpSync(built,dest,{recursive:true});
+const manifest={sourceRevision:'c9ff3184cf1515648576a6641c05a11ef4089fb5',patch:'scripts/prepare-two-player.mjs',rust:'1.101.0-nightly (92ffebece 2026-10-28)',wasmBindgen:'0.2.114',builtAt:new Date().toISOString(),wasmSHA256:createHash('sha256').update(fs.readFileSync(path.join(dest,'jgenesis_web_bg.wasm'))).digest('hex')};
+fs.writeFileSync('public/engine/player-two-build.json',JSON.stringify(manifest,null,2));
+console.log('Installed two-player engine',manifest.wasmSHA256);
