@@ -56,21 +56,21 @@ try{
   for(const system of order){
     const g=data.games.find(g=>g.system===system);
     await page.getByRole('button',{name:g.title,exact:true}).click();await playing();
-    if(system!=='nes')assert.equal(await page.frames().find(f=>f.url().includes('/engine/play.html')).evaluate(()=>crossOriginIsolated),true);
-    if(system!=='nes')await page.frames().find(f=>f.url().includes('/engine/play.html')).waitForFunction(()=>window.reducerRuntimeState().renderedFrames>250,{},{timeout:30000});await page.waitForTimeout(300);await page.screenshot({path:path.join(run,`${system}.png`)});
+    if(system!=='nes'){const engine=page.frames().find(f=>f.url().includes('/play.html'));assert.ok(engine.url().includes('/engine-'),'Emulator URLs are content-versioned');assert.equal(await engine.evaluate(()=>crossOriginIsolated),true);}
+    if(system!=='nes')await page.frames().find(f=>f.url().includes('/play.html')).waitForFunction(()=>window.reducerRuntimeState().renderedFrames>250,{},{timeout:30000});await page.waitForTimeout(300);await page.screenshot({path:path.join(run,`${system}.png`)});
     await page.getByRole('button',{name:'Mute sound',exact:true}).click();await playing();await page.getByRole('button',{name:'Unmute sound',exact:true}).click();
     await page.getByRole('combobox',{name:'Game category',exact:true}).click();await page.getByRole('option',{name:'Uncategorized',exact:true}).click();await playing();assert.equal(await page.locator('.game-row').count(),0);
     await page.getByRole('combobox',{name:'Game category',exact:true}).click();await page.getByRole('option',{name:'All categories',exact:true}).click();
     await page.getByRole('button',{name:'Review game',exact:true}).click();await page.getByRole('button',{name:'Resume game',exact:true}).click();await playing();
-    const speed=()=>system==='nes'?page.locator('.nes-canvas').getAttribute('data-speed').then(Number):page.frames().find(f=>f.url().includes('/engine/play.html')).evaluate(()=>window.reducerRuntimeState().speed);
+    const speed=()=>system==='nes'?page.locator('.nes-canvas').getAttribute('data-speed').then(Number):page.frames().find(f=>f.url().includes('/play.html')).evaluate(()=>window.reducerRuntimeState().speed);
     const fast=await page.getByRole('button',{name:'Hold to fast-forward',exact:true}).boundingBox();await page.mouse.move(fast.x+15,fast.y+15);await page.mouse.down();await page.waitForTimeout(180);assert.equal(await speed(),3);await page.mouse.move(10,100);await page.mouse.up();await page.waitForTimeout(180);assert.equal(await speed(),1);
     if(system==='megadrive'){
-      const engine=page.frames().find(f=>f.url().includes('/engine/play.html'));await engine.evaluate(()=>window.routeSentinel='preserved');
+      const engine=page.frames().find(f=>f.url().includes('/play.html'));await engine.evaluate(()=>window.routeSentinel='preserved');
       await page.getByRole('button',{name:'More actions',exact:true}).click();await page.getByRole('menuitem',{name:'Games library',exact:true}).click();await page.getByRole('region',{name:'Games library',exact:true}).waitFor();assert.ok(page.url().endsWith('/games/'));assert.equal(await engine.evaluate(()=>window.reducerRuntimeState().paused),true);await page.getByRole('button',{name:'List view',exact:true}).click();await page.getByRole('button',{name:'Grid view',exact:true}).click();await page.getByRole('link',{name:'Player',exact:true}).click();assert.equal(await engine.evaluate(()=>window.routeSentinel),'preserved');await page.getByRole('button',{name:'Resume game',exact:true}).click();await playing();
     }
     if(system!=='nes'){
       await page.getByRole('button',{name:'Review game',exact:true}).click();
-      await page.frames().find(f=>f.url().includes('/engine/play.html')).evaluate(async()=>{const saves=await import(new URL('save-store.js',location.href).href),bytes=new Uint8Array(8192);bytes.set([11,22,33,44]);await saves.writeSaveFile(window.reducerChannel.current_file_name(),'sav',bytes);await window.reducerFlushSaves();});
+      await page.frames().find(f=>f.url().includes('/play.html')).evaluate(async()=>{const saves=await import(new URL('save-store.js',location.href).href),bytes=new Uint8Array(8192);bytes.set([11,22,33,44]);await saves.writeSaveFile(window.reducerChannel.current_file_name(),'sav',bytes);await window.reducerFlushSaves();});
     }
     await page.getByRole('button',{name:'Stop game',exact:true}).click();console.log('PASS browser-only playback, mute, pause/resume and live filters:',system);
   }

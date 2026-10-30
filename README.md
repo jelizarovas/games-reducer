@@ -73,6 +73,8 @@ The included `.github/workflows/pages.yml` builds and publishes `dist/`. In repo
 
 GitHub Pages does not supply the COOP/COEP headers needed by the WebAssembly audio engine. The same-origin `isolation-sw.js` service worker adds those response headers locally, then the bootstrap reloads once before mounting the app. It does not cache ROMs or progress and is not an offline installation feature. A network connection is needed to load the app and assets.
 
+Emulator files are served from a content-versioned directory so a returning browser cannot mix a cached engine/save adapter with a newer app. Development maps that directory to the local engine; production builds include the matching static files.
+
 ## Verification
 
 ```sh

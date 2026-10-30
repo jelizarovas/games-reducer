@@ -122,5 +122,5 @@ export const Player = forwardRef(function Player({ game, paused, muted, onLoaded
   }, [paused, game.id]);
   useEffect(() => { send({type:'mute',muted}); }, [muted,game.id]);
   return game.system === 'nes' ? <div className="nes-canvas" data-muted={muted} ref={container} /> :
-    <iframe ref={frame} src={assetUrl('engine/play.html')} title={`Playing ${game.title}`} allow="autoplay; gamepad" className="emulator-frame" />;
+    <iframe ref={frame} src={assetUrl(`${__ENGINE_DIRECTORY__}/play.html`)} title={`Playing ${game.title}`} allow="autoplay; gamepad" className="emulator-frame" />;
 });
