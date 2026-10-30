@@ -44,7 +44,7 @@ function Panel({ playerNumber, enabled, system, gameId, onKey }) {
     clearInterval(hold.timer); holds.current.delete(event.pointerId); flush();
     if (![...holds.current.values()].some(h=>h.button===event.currentTarget)) event.currentTarget.removeAttribute('data-held');
   };
-  const button = (label,code,turbo=false,cls='') => <button key={label} className={cls} aria-label={`Player ${playerNumber} ${label}`} disabled={!enabled} title={turbo ? `Hold for rapid ${label[0]}` : label}
+  const button = (label,code,turbo=false,cls='') => <button key={label} className={cls} data-shortcut={playerNumber===1&&!turbo?({ArrowUp:'↑',ArrowDown:'↓',ArrowLeft:'←',ArrowRight:'→',ControlRight:'R Ctrl',ShiftRight:'R Shift',Enter:'Enter'}[code]||code.replace('Key','')):undefined} aria-label={`Player ${playerNumber} ${label}`} disabled={!enabled} title={turbo ? `Hold for rapid ${label[0]}` : label}
     onPointerDown={event => {
       if (event.button !== 0 || !enabled) return;
       event.preventDefault(); event.stopPropagation(); event.currentTarget.setPointerCapture(event.pointerId);

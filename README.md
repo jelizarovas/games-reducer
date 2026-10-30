@@ -52,6 +52,8 @@ A failed copy or verification keeps the original. A crash may leave a duplicate 
 - Hold the header's **fast-forward button**, RT/R2, or Tab for 3x fast forward; release for normal speed. Mouse and touch holds release even when the pointer leaves the button.
 - L3 or F toggles fullscreen. The header contains mute and complete draggable red P1 / blue P2 controllers.
 - Category, search, sort, and review filters remain usable during gameplay.
+- The icon before the app name shows/hides the sidebar. Drag its right edge to resize it, or the top edge of the bottom dock on small screens. The view icon beside sort/filter toggles cover grid and list. Layout choices are saved in this browser.
+- Press **Shift + /** (`?`) for keyboard shortcuts, or choose **Keyboard shortcuts** from **...**. Hold **Alt** to reveal key badges. Alt+L toggles the sidebar, Alt+V switches its layout, Alt+K focuses search, Alt+G/Alt+P switch screens, Alt+S opens settings, Alt+M toggles sound, and Alt+U undoes a decision. These also work while the WASM game has keyboard focus.
 - The library scrolls vertically on desktop and docks horizontally at the bottom on narrow screens. The game stays 4:3.
 - **... > Games library** opens `/games/`, with a virtualized cover grid or compact list and the same console, category, review, search, and sort filters. Click a card to play.
 - The **...** menu includes collection progress: reviewed/remaining totals, kept, marked/later games, play time, and cartridge-save count. Switching between the player and games library pauses and preserves the loaded game.

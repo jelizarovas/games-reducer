@@ -6,7 +6,7 @@ import {assetUrl} from './assets';
 const buttons = { ArrowUp: Controller.BUTTON_UP, ArrowDown: Controller.BUTTON_DOWN, ArrowLeft: Controller.BUTTON_LEFT, ArrowRight: Controller.BUTTON_RIGHT,
   KeyX: Controller.BUTTON_A, KeyZ: Controller.BUTTON_B, Enter: Controller.BUTTON_START, ControlRight: Controller.BUTTON_SELECT };
 
-export const Player = forwardRef(function Player({ game, paused, muted, onLoaded, onReview, onError, onFullscreen, onFastForward }, ref) {
+export const Player = forwardRef(function Player({ game, paused, muted, onLoaded, onReview, onError, onFullscreen, onFastForward,onShortcutHints,onShortcuts,onShortcut }, ref) {
   const frame = useRef(null), container = useRef(null), nes = useRef(null);
   const speed = useRef(1);
   const silence = useRef(muted); silence.current = muted;
@@ -21,7 +21,7 @@ export const Player = forwardRef(function Player({ game, paused, muted, onLoaded
     }
     return nesSave.current.pending.then(()=>{if(nesSave.current.error)throw nesSave.current.error;});
   }
-  const callbacks = useRef({}); callbacks.current = { onLoaded, onReview, onError, onFullscreen, onFastForward };
+  const callbacks = useRef({}); callbacks.current = { onLoaded, onReview, onError, onFullscreen, onFastForward,onShortcutHints,onShortcuts,onShortcut };
   const send = message => frame.current?.contentWindow?.postMessage({ source: 'games-reducer', ...message }, location.origin);
   useImperativeHandle(ref, () => ({
     async flushSaves(){
@@ -98,6 +98,9 @@ export const Player = forwardRef(function Player({ game, paused, muted, onLoaded
       if (message.type === 'loaded') { loaded = true; callbacks.current.onLoaded(); }
       if(message.type==='saves-flushed'){const request=requests.current.get(message.requestId);if(request){clearTimeout(request.timer);requests.current.delete(message.requestId);message.error?request.reject(new Error(message.error)):request.resolve();}}
       if (message.type === 'review') callbacks.current.onReview();
+      if(message.type==='shortcut-hints')callbacks.current.onShortcutHints?.(message.held);
+      if(message.type==='shortcuts')callbacks.current.onShortcuts?.();
+      if(message.type==='shortcut')callbacks.current.onShortcut?.(message.code);
       if (message.type === 'fullscreen') callbacks.current.onFullscreen?.();
       if (message.type === 'fast-forward') callbacks.current.onFastForward?.(message.held);
       if (message.type === 'error') callbacks.current.onError(message.message);

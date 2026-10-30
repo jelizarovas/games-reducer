@@ -7,7 +7,9 @@ import {thumbnail} from './assets';
 import {BrowserSettings} from './BrowserSettings';
 import {GamesPage} from './LibraryPages';
 import {useRoute,routePath} from './routes';
-import {FastForward} from 'lucide-react';
+import {FastForward,PanelLeftClose,PanelLeftOpen,LayoutGrid,List} from 'lucide-react';
+import {SidebarResize} from './SidebarResize';
+import {KeyboardShortcuts} from './KeyboardShortcuts';
 import './library-pages.css';
 import { consoleNames, matchesConsole, releaseYear, sortGames, gameCategories, matchesCategory } from './library-view';
 import { TouchControls } from './TouchControls';
@@ -19,6 +21,7 @@ import { makePadRouter, GENESIS_KEYS, SNES_KEYS, NES_KEYS } from './controller';
 import './style.css';
 import './controller-ui.css';
 import './workspace.css';
+import './sidebar.css';
 import { ControllerMenu } from './ControllerMenu';
 
 const labels = { unreviewed: 'To try', keep: 'Keepers', discard: 'Marked', skip: 'Later' };
@@ -28,6 +31,13 @@ const Pad = ({ children, tone = '' }) => <span className={`pad ${tone}`}>{childr
 
 function App() {
   const [route,setRoute]=useRoute();
+  const [shortcutHints,setShortcutHints]=useState(false);
+  useEffect(()=>{document.body.classList.toggle('show-shortcuts',shortcutHints);return()=>document.body.classList.remove('show-shortcuts');},[shortcutHints]);
+  const [sidebarHidden,setSidebarHidden]=useState(()=>localStorage.getItem('games-reducer-sidebar-hidden')==='true');
+  const [sidebarWidth,setSidebarWidth]=useState(()=>Math.max(224,Math.min(640,Number(localStorage.getItem('games-reducer-sidebar-width'))||256)));
+  const [dockHeight,setDockHeight]=useState(()=>Number(localStorage.getItem('games-reducer-dock-height'))|| (innerHeight<=500?132:232));
+  const [sidebarView,setSidebarView]=useState(()=>localStorage.getItem('games-reducer-sidebar-view')==='grid'?'grid':'list');
+  useEffect(()=>{localStorage.setItem('games-reducer-sidebar-hidden',sidebarHidden);localStorage.setItem('games-reducer-sidebar-width',sidebarWidth);localStorage.setItem('games-reducer-dock-height',dockHeight);localStorage.setItem('games-reducer-sidebar-view',sidebarView);},[sidebarHidden,sidebarWidth,dockHeight,sidebarView]);
   const [state, setState] = useState(null), [games, setGames] = useState([]), [selected, setSelected] = useState(null);
   const [system, setSystem] = useState('all'), [filter, setFilter] = useState('unreviewed'), [query, setQuery] = useState('');
   const [phase, setPhase] = useState('ready'), [playing, setPlaying] = useState(null), [busy, setBusy] = useState(false);
@@ -154,6 +164,10 @@ function App() {
       setModal(null);
     } catch (e) { setError(e.message); }
     finally { setBusy(false); }
+  }
+  function appShortcut(code){
+    const shortcuts={KeyL:()=>{if(route!=='player'){navigate('player');setSidebarHidden(false);}else setSidebarHidden(v=>!v);},KeyV:()=>{if(route==='player')setSidebarView(v=>v==='list'?'grid':'list');},KeyG:()=>navigate('games'),KeyP:()=>navigate('player'),KeyS:()=>openPanel('settings'),KeyM:()=>setMuted(v=>!v),KeyU:undo,KeyK:()=>{if(route==='player')setSidebarHidden(false);requestAnimationFrame(()=>document.querySelector(route==='games'?'input[aria-label="Search library"]':'input[aria-label="Find a game"]')?.focus());}};
+    shortcuts[code]?.();
   }
   function openPanel(name) {
     if(framePhase.current==='playing')review();
@@ -290,7 +304,16 @@ function App() {
   }, []);
   const playingSystem = useRef(system); playingSystem.current = playing?.system || system;
   useEffect(() => {
+    const hints=e=>{
+      if(e.code==='AltLeft'||e.code==='AltRight'){e.preventDefault();e.stopPropagation();setShortcutHints(e.type==='keydown');return;}
+      if(e.type!=='keydown')return;
+      if(e.altKey&&!e.ctrlKey&&!e.metaKey){e.preventDefault();e.stopPropagation();if(!e.repeat)appShortcut(e.code);return;}
+      if(!['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName)&&(e.key==='?'||(e.code==='Slash'&&e.shiftKey))){e.preventDefault();e.stopPropagation();if(!e.repeat)openPanel('shortcuts');}
+    };
     const keydown = e => {
+      const editing=['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName);
+      if(!editing&&e.code==='Escape'&&modal){e.preventDefault();setModal(null);return;}
+      if(!editing&&e.code==='KeyF'&&!e.repeat){e.preventDefault();expanded&&!document.fullscreenElement?nativeFullscreen():toggleFullscreen();return;}
       if(route!=='player')return;
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName) && e.code !== 'Escape') return;
       if (e.code === 'Tab' && phase === 'playing') { e.preventDefault(); keyboardSpeed(true); return; }
@@ -307,12 +330,12 @@ function App() {
         if (action) { e.preventDefault(); actions.current[action](); }
       } else if (phase === 'playing') player.current?.key(e.code, true, 'keyboard');
     };
-    const keyup = e => { if (e.code === 'Tab') keyboardSpeed(false); if (phase === 'playing') player.current?.key(e.code, false, 'keyboard'); };
-    const visibility = () => { if (document.hidden) review(); };
-    const blur=()=>{buttonSpeed(false);keyboardSpeed(false);};
+    const keyup = e => { if(e.code==='AltLeft'||e.code==='AltRight')setShortcutHints(false);if (e.code === 'Tab') keyboardSpeed(false); if (phase === 'playing') player.current?.key(e.code, false, 'keyboard'); };
+    const visibility = () => { if (document.hidden){setShortcutHints(false);review();} };
+    const blur=()=>{setShortcutHints(false);buttonSpeed(false);keyboardSpeed(false);};
     window.addEventListener('keydown', keydown); window.addEventListener('keyup', keyup); document.addEventListener('visibilitychange', visibility);
-    window.addEventListener('blur',blur);
-    return () => { window.removeEventListener('blur',blur);window.removeEventListener('keydown', keydown); window.removeEventListener('keyup', keyup); document.removeEventListener('visibilitychange', visibility); };
+    window.addEventListener('blur',blur);window.addEventListener('keydown',hints,true);window.addEventListener('keyup',hints,true);
+    return () => { window.removeEventListener('keydown',hints,true);window.removeEventListener('keyup',hints,true);window.removeEventListener('blur',blur);window.removeEventListener('keydown', keydown); window.removeEventListener('keyup', keyup); document.removeEventListener('visibilitychange', visibility); };
   }, [phase, modal, busy, expanded,route]);
   useEffect(() => {
     if (!playing) return;
@@ -333,9 +356,10 @@ function App() {
     return () => { layout.removeEventListener('change', reveal); cancelAnimationFrame(frame); };
   }, []);
 
-  return <div className={`app-shell ${expanded ? 'is-expanded' : ''} ${phase === 'decision' ? 'is-review' : ''}`}>
+  return <div style={{'--sidebar-width':sidebarWidth+'px','--dock-height':sidebarHidden?'0px':`min(${dockHeight}px, max(128px, calc(100dvh - 212px)))`}} className={`app-shell ${expanded ? 'is-expanded' : ''} ${phase === 'decision' ? 'is-review' : ''}`}>
     <header className="topbar">
       <div className="header-context">
+      {route==='player'&&<button data-shortcut="Alt+L" className="icon-button sidebar-toggle" aria-label={sidebarHidden?'Show game library':'Hide game library'} title={sidebarHidden?'Show game library':'Hide game library'} aria-expanded={!sidebarHidden} aria-controls="game-library" onClick={()=>setSidebarHidden(value=>!value)}>{sidebarHidden?<PanelLeftOpen size={20}/>:<PanelLeftClose size={20}/>}</button>}
       <Dropdown label="Console" value={system} onChange={chooseSystem} triggerClassName="brand console-picker" options={Object.entries(consoleNames).map(([value,label])=>({value,label}))}><Gamepad2 size={22}/><span>{system === 'all' ? 'Games' : consoleNames[system]} Reducer</span></Dropdown>
       <ChevronRight className="header-separator" size={16}/>
       <h1 className="header-title" title={current?.title}>{route==='games'?'Games':current?.title || 'Choose a game'}</h1>
@@ -345,44 +369,46 @@ function App() {
       <div className="header-playback" role="group" aria-label="Playback controls" hidden={route!=='player'}>
       <span className={`header-status ${phase === 'decision' ? 'paused' : 'quiet-status'}`}>{playing ? phase === 'decision' ? 'Paused' : `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}` : current ? labels[current.status] : ''}</span>
       {(phase === 'playing' || phase === 'decision') && <div className="header-decisions" role="group" aria-label="Review game">
-        <button className="keep" aria-label="Keep game" title="Keep · A / 1" disabled={busy} onClick={() => decide('keep')}><Check size={18}/><span>Keep</span></button>
-        <button className="discard" aria-label="Mark game for removal" title="Mark for removal · B / 2" disabled={busy} onClick={() => decide('discard')}><Trash2 size={18}/><span>Remove</span></button>
-        <button aria-label="Try game later" title="Later · X / 3" disabled={busy} onClick={() => decide('skip')}><SkipForward size={18}/><span>Later</span></button>
+        <button className="keep" data-shortcut={phase==='decision'?'1':undefined} aria-label="Keep game" title="Keep · A / 1" disabled={busy} onClick={() => decide('keep')}><Check size={18}/><span>Keep</span></button>
+        <button className="discard" data-shortcut={phase==='decision'?'2':undefined} aria-label="Mark game for removal" title="Mark for removal · B / 2" disabled={busy} onClick={() => decide('discard')}><Trash2 size={18}/><span>Remove</span></button>
+        <button data-shortcut={phase==='decision'?'3':undefined} aria-label="Try game later" title="Later · X / 3" disabled={busy} onClick={() => decide('skip')}><SkipForward size={18}/><span>Later</span></button>
       </div>}
-        {playing&&<button className="icon-button hold-turbo" aria-label="Hold to fast-forward" title="Hold for 3× speed · RT / Tab" aria-pressed={fastForward} disabled={phase!=='playing'} onPointerDown={e=>{if(e.button!==0)return;e.preventDefault();e.currentTarget.setPointerCapture(e.pointerId);buttonSpeed(true);}} onPointerUp={()=>buttonSpeed(false)} onPointerCancel={()=>buttonSpeed(false)} onLostPointerCapture={()=>buttonSpeed(false)} onBlur={()=>buttonSpeed(false)} onKeyDown={e=>{if(['Space','Enter'].includes(e.code)){e.preventDefault();e.stopPropagation();buttonSpeed(true);}}} onKeyUp={e=>{if(['Space','Enter'].includes(e.code)){e.preventDefault();e.stopPropagation();buttonSpeed(false);}}}><FastForward size={18}/></button>}
-        {phase === 'ready' && <button className="icon-button" aria-label="Play game" title="Play" disabled={!current || busy || current.missing} onClick={() => playGame()}><Play size={20}/></button>}
+        {playing&&<button className="icon-button hold-turbo" data-shortcut="Tab" aria-label="Hold to fast-forward" title="Hold for 3× speed · RT / Tab" aria-pressed={fastForward} disabled={phase!=='playing'} onPointerDown={e=>{if(e.button!==0)return;e.preventDefault();e.currentTarget.setPointerCapture(e.pointerId);buttonSpeed(true);}} onPointerUp={()=>buttonSpeed(false)} onPointerCancel={()=>buttonSpeed(false)} onLostPointerCapture={()=>buttonSpeed(false)} onBlur={()=>buttonSpeed(false)} onKeyDown={e=>{if(['Space','Enter'].includes(e.code)){e.preventDefault();e.stopPropagation();buttonSpeed(true);}}} onKeyUp={e=>{if(['Space','Enter'].includes(e.code)){e.preventDefault();e.stopPropagation();buttonSpeed(false);}}}><FastForward size={18}/></button>}
+        {phase === 'ready' && <button className="icon-button" data-shortcut="Enter" aria-label="Play game" title="Play" disabled={!current || busy || current.missing} onClick={() => playGame()}><Play size={20}/></button>}
         {playing && <button className="icon-button" title="Back to library" aria-label="Stop game" onClick={() => stopPlayer().catch(e => setError(e.message))}><Square size={18}/></button>}
-        {phase === 'playing' && <button className="icon-button" aria-label="Review game" title="Review · Back + Start / Esc" onClick={review}><Pause size={20}/></button>}
-        {phase === 'decision' && <button className="icon-button" aria-label="Resume game" title="Resume" onClick={resume}><Play size={20}/></button>}
+        {phase === 'playing' && <button className="icon-button" data-shortcut="Esc" aria-label="Review game" title="Review · Back + Start / Esc" onClick={review}><Pause size={20}/></button>}
+        {phase === 'decision' && <button className="icon-button" data-shortcut="Enter" aria-label="Resume game" title="Resume" onClick={resume}><Play size={20}/></button>}
       </div>
       <div className="top-actions">
         <button className="icon-button touch-toggle red" aria-label="Player 1 controller" title="Player 1 · red controller" aria-pressed={touchPanels.p1} onClick={() => setTouchPanels(p => ({...p,p1:!p.p1}))}><Gamepad2 size={19}/><small>1</small></button>
         <button className="icon-button touch-toggle blue" aria-label="Player 2 controller" title="Player 2 · blue controller" aria-pressed={touchPanels.p2} onClick={() => setTouchPanels(p => ({...p,p2:!p.p2}))}><Gamepad2 size={19}/><small>2</small></button>
-        <button className="icon-button" aria-label={muted ? 'Unmute sound' : 'Mute sound'} title={muted ? 'Unmute sound' : 'Mute sound'} aria-pressed={muted} onClick={() => setMuted(value => !value)}>{muted ? <VolumeX size={19}/> : <Volume2 size={19}/>}</button>
+        <button className="icon-button" data-shortcut="Alt+M" aria-label={muted ? 'Unmute sound' : 'Mute sound'} title={muted ? 'Unmute sound' : 'Mute sound'} aria-pressed={muted} onClick={() => setMuted(value => !value)}>{muted ? <VolumeX size={19}/> : <Volume2 size={19}/>}</button>
         {expanded && fullscreenHint && <button className="icon-button" aria-label="Enter browser fullscreen" title={fullscreenHint} onClick={nativeFullscreen}><Maximize size={15}/></button>}
-        <button className="icon-button" aria-label="Toggle fullscreen" title="Fullscreen · L3 / F" onClick={toggleFullscreen}><Maximize size={19}/></button>
+        <button className="icon-button" data-shortcut="F" aria-label="Toggle fullscreen" title="Fullscreen · L3 / F" onClick={toggleFullscreen}><Maximize size={19}/></button>
         {controller && <Gamepad2 className="connected header-secondary" size={18} aria-label="Controller connected"/>}
-        <SessionMenu games={games} saveCount={state?.saveCount} onRefresh={()=>refresh().catch(e=>setError(e.message))} onNavigate={navigate} onFinish={finish} onUndo={undo} onController={()=>openPanel('controller')} onSettings={()=>openPanel('settings')} busy={busy}/>
+        <SessionMenu onShortcuts={()=>openPanel('shortcuts')} games={games} saveCount={state?.saveCount} onRefresh={()=>refresh().catch(e=>setError(e.message))} onNavigate={navigate} onFinish={finish} onUndo={undo} onController={()=>openPanel('controller')} onSettings={()=>openPanel('settings')} busy={busy}/>
       </div>
     </header>
     {route==='games'&&<GamesPage games={visible} query={query} onQuery={setQuery} filter={filter} onFilter={chooseFilter} category={category} onCategory={chooseCategory} categories={categoryOptions} sort={sort} onSort={setSort} onPlay={playGame} busy={busy} onSettings={()=>openPanel('settings')}/>}
     {route!=='player'&&error&&!modal&&<div className="alert error" role="alert">{error}<button aria-label="Dismiss error" onClick={()=>setError('')}><X size={16}/></button></div>}
-    <div className="workspace" hidden={route!=='player'}>
-      <aside className="sidebar" aria-label="Game library">
+    <div className={`workspace ${sidebarHidden?'sidebar-hidden':''}`} hidden={route!=='player'}>
+      <aside id="game-library" className="sidebar" aria-label="Game library" hidden={sidebarHidden}>
         <div className="library-tools">
-          <div className="library-search"><div className="search"><Search size={17}/><input placeholder="Search games" aria-label="Find a game" value={query} onChange={e => setQuery(e.target.value)}/>
-            <Dropdown label="Sort games" value={sort} onChange={setSort} triggerClassName="search-dropdown" options={[{value:'title',label:'Title A–Z'},{value:'title-desc',label:'Title Z–A'},{value:'year',label:'Oldest first'},{value:'year-desc',label:'Newest first'}]}><ArrowDownUp size={17}/></Dropdown>
-            <Dropdown label="Review status" value={filter} onChange={chooseFilter} triggerClassName="search-dropdown" options={Object.entries({...labels,all:'All games'}).map(([value,label])=>({value,label}))}><ListFilter size={18}/></Dropdown>
+          <div className="library-search"><div className="search" data-shortcut="Alt+K"><Search size={17}/><input placeholder="Search games" aria-label="Find a game" value={query} onChange={e => setQuery(e.target.value)}/>
+            <Dropdown showArrow={false} label="Sort games" value={sort} onChange={setSort} triggerClassName="search-dropdown" options={[{value:'title',label:'Title A–Z'},{value:'title-desc',label:'Title Z–A'},{value:'year',label:'Oldest first'},{value:'year-desc',label:'Newest first'}]}><ArrowDownUp size={17}/></Dropdown>
+            <Dropdown showArrow={false} label="Review status" value={filter} onChange={chooseFilter} triggerClassName="search-dropdown" options={Object.entries({...labels,all:'All games'}).map(([value,label])=>({value,label}))}><ListFilter size={18}/></Dropdown>
+            <button data-shortcut="Alt+V" className="icon-button sidebar-view-toggle" aria-label={sidebarView==='list'?'Show grid view':'Show list view'} title={sidebarView==='list'?'Grid view':'List view'} onClick={()=>setSidebarView(value=>value==='list'?'grid':'list')}>{sidebarView==='list'?<LayoutGrid size={17}/>:<List size={17}/>}</button>
           </div></div>
           <Dropdown label="Game category" value={category} onChange={chooseCategory} triggerClassName={`category-filter ${category !== 'all' ? 'active' : ''}`} options={categoryOptions} width={256}><span>{categoryOptions.find(option=>option.value===category)?.label}</span></Dropdown>
         </div>
-        <GameList games={visible} selected={selected} onPlay={playGame} busy={busy} loading={phase==='loading'} resetKey={JSON.stringify([system,category,filter,query,sort])}/>
+        <GameList view={sidebarView} games={visible} selected={selected} onPlay={playGame} busy={busy} loading={phase==='loading'} resetKey={JSON.stringify([system,category,filter,query,sort])}/>
+        <SidebarResize width={sidebarWidth} height={dockHeight} onWidth={setSidebarWidth} onHeight={setDockHeight}/>
       </aside>
       <main>
         {error && !modal && <div className="alert error" role="alert">{error}<button aria-label="Dismiss error" onClick={() => setError('')}><X size={16}/></button></div>}
         <section className="game-stage" aria-label="Game player">
           <div className="stage-body"><div className="screen" data-phase={phase}>
-            {playing ? <Player key={playing.id} ref={player} game={playing} muted={muted} paused={phase === 'decision'} onLoaded={() => { const next=route==='player'&&!modal?'playing':'decision';setPhase(next);framePhase.current=next; }} onReview={review} onFastForward={keyboardSpeed} onFullscreen={() => expanded && !document.fullscreenElement ? nativeFullscreen() : toggleFullscreen()} onError={message => { setError(message); stopPlayer().catch(() => {}); }}/>
+            {playing ? <Player onShortcutHints={setShortcutHints} onShortcuts={()=>openPanel('shortcuts')} onShortcut={appShortcut} key={playing.id} ref={player} game={playing} muted={muted} paused={phase === 'decision'} onLoaded={() => { const next=route==='player'&&!modal?'playing':'decision';setPhase(next);framePhase.current=next; }} onReview={review} onFastForward={keyboardSpeed} onFullscreen={() => expanded && !document.fullscreenElement ? nativeFullscreen() : toggleFullscreen()} onError={message => { setError(message); stopPlayer().catch(() => {}); }}/>
               : <div className="preview-screen"><div className="preview-content">
                 {current ? <img className="preview-cover" src={thumbnail(current)} alt={`${current.title} cover`}/> : <Gamepad2 size={48}/>}
                 {!current && <button className="play-button" onClick={() => setModal('settings')}>Choose folder</button>}
@@ -395,10 +421,10 @@ function App() {
         <span className="sr-only" aria-live="polite">{notice}</span>
       </main>
     </div>
-    {modal && <div className="modal-backdrop" onPointerDown={e => { if(e.target===e.currentTarget && !busy)setModal(null); }}><div className={`modal ${modal === 'cleanup' ? 'wide' : ''}`} role="dialog" aria-modal="true" aria-label={modal === 'cleanup' ? 'Finish session' : modal === 'controller' ? 'Controller menu' : modal === 'info' ? 'Game information' : 'Library settings'} ref={dialog}>
-      <div className="modal-heading"><div><h2>{modal === 'cleanup' ? 'Review before cleanup.' : modal === 'controller' ? 'Controller menu' : modal === 'info' ? 'Game information' : 'Library settings'}</h2></div><button className="icon-button" aria-label="Close dialog" disabled={busy} onClick={() => setModal(null)}><X/></button></div>
+    {modal && <div className="modal-backdrop" onPointerDown={e => { if(e.target===e.currentTarget && !busy)setModal(null); }}><div className={`modal ${modal === 'shortcuts'?'shortcuts-modal':modal === 'cleanup' ? 'wide' : ''}`} role="dialog" aria-modal="true" aria-label={modal === 'shortcuts' ? 'Keyboard shortcuts' : modal === 'cleanup' ? 'Finish session' : modal === 'controller' ? 'Controller menu' : modal === 'info' ? 'Game information' : 'Library settings'} ref={dialog}>
+      <div className="modal-heading"><div><h2>{modal === 'shortcuts' ? 'Keyboard shortcuts' : modal === 'cleanup' ? 'Review before cleanup.' : modal === 'controller' ? 'Controller menu' : modal === 'info' ? 'Game information' : 'Library settings'}</h2></div><button className="icon-button" aria-label="Close dialog" disabled={busy} onClick={() => setModal(null)}><X/></button></div>
       {error && <div className="alert error" role="alert">{error}<button aria-label="Dismiss error" onClick={() => setError('')}><X size={16}/></button></div>}
-      {modal === 'info' ? <div className="game-info"><img src={thumbnail(current)} alt={`${current?.title} cover`}/><div><h3>{current?.title}</h3><p>{shortSystems[current?.system]} · {size(current?.size || 0)}</p>{current?.metadata.description && <p>{current.metadata.description}</p>}<button disabled={!current || mediaBusy || !state?.metadataConfigured} onClick={scrape}><Download size={16}/> Fetch info</button></div></div> : modal === 'controller' ? <ControllerMenu system={system} filter={filter} onSystem={chooseSystem} onFilter={chooseFilter} onFullscreen={toggleFullscreen} onSettings={() => setModal('settings')} onFetch={scrape} canFetch={!!current && !mediaBusy && !!state?.metadataConfigured} onUndo={undo} onFinish={finish} onClose={() => setModal(null)}/> : modal === 'settings' ? <><BrowserSettings state={state} busy={busy} onScan={scan} onStop={stopPlayer} onRefresh={refresh} onError={setError} onFlush={()=>{if(framePhase.current==='loading')throw new Error('Wait for the game to finish loading before exporting.');return player.current?.flushSaves?.();}}/><div className="settings-section"><h3>Controls</h3><p>Browse: D-pad / left stick selects · A plays · LB/RB console · Left/Right filter · LT/RT jumps 20 · X menu · Y undo · Start finish session.</p><p>L3 toggles fullscreen view from any screen. F requests browser fullscreen. In game: hold RT/R2 or Tab for 3× fast forward, release for normal speed. Back + Start opens review. A keeps, B marks, X skips, Y resumes. Release buttons before choosing.</p><p className="help">Keyboard: arrows move; Genesis A/S/D, Q/W/E; SNES Z/X/A/S, D/C shoulders, Right Shift select; NES X/Z, Right Ctrl select. Enter starts games; Esc opens review.</p></div><div className="settings-section"><h3>Missing files</h3><p className="help">After you move games outside this app, scan again. Clear only the records whose files are still missing.</p><button disabled={busy || !games.some(g => g.missing)} onClick={async () => { try { await stopPlayer(); const result = await api('/missing/clear', {}); await refresh(); setNotice(`Cleared ${result.count} missing records.`); } catch (e) { setError(e.message); } }}>Clear missing records</button></div></>
+      {modal === 'shortcuts' ? <KeyboardShortcuts system={playing?.system||current?.system||'nes'}/> : modal === 'info' ? <div className="game-info"><img src={thumbnail(current)} alt={`${current?.title} cover`}/><div><h3>{current?.title}</h3><p>{shortSystems[current?.system]} · {size(current?.size || 0)}</p>{current?.metadata.description && <p>{current.metadata.description}</p>}<button disabled={!current || mediaBusy || !state?.metadataConfigured} onClick={scrape}><Download size={16}/> Fetch info</button></div></div> : modal === 'controller' ? <ControllerMenu system={system} filter={filter} onSystem={chooseSystem} onFilter={chooseFilter} onFullscreen={toggleFullscreen} onSettings={() => setModal('settings')} onFetch={scrape} canFetch={!!current && !mediaBusy && !!state?.metadataConfigured} onUndo={undo} onFinish={finish} onClose={() => setModal(null)}/> : modal === 'settings' ? <><BrowserSettings state={state} busy={busy} onScan={scan} onStop={stopPlayer} onRefresh={refresh} onError={setError} onFlush={()=>{if(framePhase.current==='loading')throw new Error('Wait for the game to finish loading before exporting.');return player.current?.flushSaves?.();}}/><div className="settings-section"><h3>Controls</h3><p>Browse: D-pad / left stick selects · A plays · LB/RB console · Left/Right filter · LT/RT jumps 20 · X menu · Y undo · Start finish session.</p><p>L3 toggles fullscreen view from any screen. F requests browser fullscreen. In game: hold RT/R2 or Tab for 3× fast forward, release for normal speed. Back + Start opens review. A keeps, B marks, X skips, Y resumes. Release buttons before choosing.</p><p className="help">Keyboard: arrows move; Genesis A/S/D, Q/W/E; SNES Z/X/A/S, D/C shoulders, Right Shift select; NES X/Z, Right Ctrl select. Enter starts games; Esc opens review.</p></div><div className="settings-section"><h3>Missing files</h3><p className="help">After you move games outside this app, scan again. Clear only the records whose files are still missing.</p><button disabled={busy || !games.some(g => g.missing)} onClick={async () => { try { await stopPlayer(); const result = await api('/missing/clear', {}); await refresh(); setNotice(`Cleared ${result.count} missing records.`); } catch (e) { setError(e.message); } }}>Clear missing records</button></div></>
       : <>{cleanupResult ? <><p>{cleanupResult.filter(r => r.ok).length} games moved to trash. Their game records and decision history were cleared.</p>{cleanupResult.filter(r => !r.ok).map(r => <p className="red" key={r.id}>{games.find(g => g.id === r.id)?.title || r.id}: {r.error}</p>)}<button className="primary" onClick={() => setModal(null)}>Back to library</button></> : <><p><strong>{preview?.games.length || 0} games</strong> marked · {size(preview?.bytes || 0)}</p><p className="help">Cleanup moves these files to <code>{preview?.trash}</code>. Each move is verified before its game record is cleared. Kept and undecided games stay in your library.</p><div className="cleanup-list">{preview?.games.map(game => <div key={game.id}><span>{game.title}<small>{shortSystems[game.system]} · {size(game.size)}</small></span><button disabled={busy} onClick={async () => { try { await api(`/games/${game.id}/decision`, { status: 'unreviewed' }); await refresh(); setPreview(await api('/cleanup/preview', {})); } catch (e) { setError(e.message); } }}>Unmark</button></div>)}</div><div className="modal-actions"><button disabled={busy} onClick={() => setModal(null)}>Keep reviewing</button><button className="danger" disabled={busy || !preview?.games.length} onClick={cleanup}>{busy ? <LoaderCircle className="spin" size={16}/> : <Trash2 size={16}/>} Move marked games to trash</button></div></> }</>}
     </div></div>}
   </div>;

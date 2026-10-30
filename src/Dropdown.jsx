@@ -2,7 +2,7 @@ import {useEffect,useId,useLayoutEffect,useRef,useState} from 'react';
 import {createPortal} from 'react-dom';
 import {ChevronDown,Check} from 'lucide-react';
 
-export function Dropdown({label,value,options,onChange,children,triggerClassName='',menu=false,width=210,panelHeader,maxHeight=320,onOpen}) {
+export function Dropdown({label,value,options,onChange,children,triggerClassName='',menu=false,width=210,panelHeader,maxHeight=320,onOpen,showArrow=true,shortcut}) {
   const [open,setOpen]=useState(false),[position,setPosition]=useState({left:0,top:0});
   const trigger=useRef(null),panel=useRef(null),id=useId();
   const close=(focus=false)=>{setOpen(false);if(focus)trigger.current?.focus();};
@@ -38,9 +38,9 @@ export function Dropdown({label,value,options,onChange,children,triggerClassName
     }
   };
   return <>
-    <button ref={trigger} className={`dropdown-trigger ${triggerClassName}`} role={menu?undefined:'combobox'} aria-label={label} title={label} aria-haspopup={menu?'menu':'listbox'} aria-controls={open?id:undefined} aria-expanded={open} data-value={value}
+    <button ref={trigger} data-shortcut={shortcut} className={`dropdown-trigger ${triggerClassName}`} role={menu?undefined:'combobox'} aria-label={label} title={label} aria-haspopup={menu?'menu':'listbox'} aria-controls={open?id:undefined} aria-expanded={open} data-value={value}
       onClick={()=>{if(!open)onOpen?.();setOpen(v=>!v);}} onKeyDown={e=>{if(['ArrowDown','ArrowUp','Enter',' '].includes(e.key)){e.preventDefault();e.stopPropagation();if(!open)onOpen?.();setOpen(true);}if(e.key==='Escape'&&open){e.preventDefault();e.stopPropagation();close(true);}}}>
-      {children}<ChevronDown className="dropdown-arrow" size={12}/>
+      {children}{showArrow&&<ChevronDown className="dropdown-arrow" size={12}/>}
     </button>
     {open&&createPortal(<div ref={panel} id={id} className="dropdown-panel" style={{...position,width:`min(${width}px, calc(100vw - 16px))`,maxHeight:`min(${maxHeight}px, calc(100dvh - 16px))`}} role={menu?'menu':'listbox'} aria-label={label} onKeyDown={keys} onKeyUp={e=>e.stopPropagation()}>
       {panelHeader}

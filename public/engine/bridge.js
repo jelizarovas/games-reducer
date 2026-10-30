@@ -104,12 +104,15 @@
     }
   });
   window.addEventListener('keydown', event => {
+    if(event.code==='AltLeft'||event.code==='AltRight'){event.preventDefault();send('shortcut-hints',{held:true});return;}
+    if(event.altKey&&!event.ctrlKey&&!event.metaKey){event.preventDefault();event.stopImmediatePropagation();if(!event.repeat)send('shortcut',{code:event.code});return;}
+    if(event.key==='?'||(event.code==='Slash'&&event.shiftKey)){event.preventDefault();event.stopImmediatePropagation();if(!event.repeat)send('shortcuts');return;}
     if (event.code === 'Tab') { event.preventDefault(); event.stopImmediatePropagation(); if (!event.repeat) send('fast-forward', { held: true }); }
     if (event.code === 'KeyF' && !event.repeat) { event.preventDefault(); event.stopImmediatePropagation(); send('fullscreen'); }
     if (event.code === 'Escape') { event.preventDefault(); event.stopImmediatePropagation(); send('review'); }
   }, true);
-  window.addEventListener('keyup', event => { if (event.code === 'Tab') { event.preventDefault(); send('fast-forward', { held: false }); } }, true);
-  window.addEventListener('blur', () => { fastForward(false); send('fast-forward', { held: false }); });
+  window.addEventListener('keyup', event => { if(event.code==='AltLeft'||event.code==='AltRight')send('shortcut-hints',{held:false});if (event.code === 'Tab') { event.preventDefault(); send('fast-forward', { held: false }); } }, true);
+  window.addEventListener('blur', () => { fastForward(false); send('fast-forward', { held: false });send('shortcut-hints',{held:false}); });
   // winit deliberately throws this sentinel after taking ownership of its event loop.
   const sentinel = "Using exceptions for control flow, don't mind me. This isn't actually an error!";
   window.addEventListener('error', event => { if (!event.message.includes(sentinel)) send('error', { message: event.message }); });
