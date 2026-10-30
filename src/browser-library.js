@@ -1,7 +1,8 @@
 import {SYSTEMS,LIMIT,statuses,cleanTitle,extension,safePath,identity,safeMetadata,decodeRom,validateBackup,validSaveKey} from './browser-core';
 import {assetUrl} from './assets';
+import {COMPATIBILITY_VERSION,inspectNesFile,isBlocked,compatibilityReport} from './nes-compatibility';
 
-// Handles stay in IndexedDB; ROM bytes are read only when starting a game.
+// Handles stay in IndexedDB. NES scans read headers (ZIPs are decoded locally).
 export const SAVE_DATABASE=`games-reducer:${new URL(import.meta.env.BASE_URL,location.href).pathname}`;
 const DB_NAME=SAVE_DATABASE;
 let db,initializing,library,player=null,preview=null,catalogPromise,releaseTab;
@@ -38,6 +39,14 @@ async function init(){
         legacy.close();
       }
       library.legacySavesMigrated=true;await save();
+    }
+    // Upgrade existing libraries without prompting or changing review decisions.
+    if(library.root&&(!library.root.queryPermission||await library.root.queryPermission({mode:'read'})==='granted')){
+      let changed=false;
+      for(const g of library.games.filter(g=>g.system==='nes'&&!g.missing&&g.compatibility?.version!==COMPATIBILITY_VERSION)){
+        try{const file=await g.handle.getFile();if(file.size!==g.size||file.lastModified!==g.mtime)continue;g.compatibility=await inspectNesFile(file);changed=true;}catch{/* Reconnect/rescan can retry inaccessible files. */}
+      }
+      if(changed)await save();
     }
     window.addEventListener('pagehide',()=>{player=null;releaseTab?.();});
     window.addEventListener('pageshow',event=>{if(event.persisted)location.reload();});
@@ -102,16 +111,17 @@ export async function scanFolder(handle){
         if(![...SYSTEMS[system].extensions,'.zip'].includes(extension(name)))continue;
         const file=await entry.getFile();
         if(file.size>LIMIT){warnings.push(`Too large: ${relative}`);continue;}
-        // ZIP structure is checked on launch to avoid reading every ROM during scanning.
+        // NES compatibility is checked before games enter the playable queue.
         const record={system,relative_path:relative,size:file.size,mtime:file.lastModified};
         const previous=old.get(identity(record)),imported=pending.get(identity(record));
         const same=previous&&previous.mtime===record.mtime;
+        const compatibility=system==='nes'?(same&&previous.compatibility?.version===COMPATIBILITY_VERSION?previous.compatibility:await inspectNesFile(file)):undefined;
         const exact=index.exact.get(`${system}|${relative.toLowerCase()}`);
         const alternatives=index.titles.get(`${system}|${cleanTitle(name).toLowerCase()}`)||[];
         const match=exact||(alternatives.length===1?alternatives[0]:null);
         const importedLocal=Object.fromEntries(Object.entries(local.get(relative.toLowerCase())||{}).filter(([,v])=>v));
         const metadata={...safeMetadata(match?.metadata),...safeMetadata(previous?.metadata),...safeMetadata(imported?.metadata),...importedLocal};
-        found.push({...record,id:(await hash(`${system}|${relative.toLowerCase()}|${record.size}`)).slice(0,24),handle:entry,title:metadata.name||match?.title||cleanTitle(name),metadata,status:imported?.status||(same?previous.status:'unreviewed'),seconds:imported?.seconds??(same?previous.seconds:0),missing:false});
+        found.push({...record,compatibility,id:(await hash(`${system}|${relative.toLowerCase()}|${record.size}`)).slice(0,24),handle:entry,title:metadata.name||match?.title||cleanTitle(name),metadata,status:imported?.status||(same?previous.status:'unreviewed'),seconds:imported?.seconds??(same?previous.seconds:0),missing:false});
         pending.delete(identity(record));
       }
     };
@@ -199,11 +209,12 @@ export function browserApi(path,body){
 }
 async function dispatch(path,body){
   await init();
-  if(path==='/state'){const saveCount=await new Promise((resolve,reject)=>{const r=db.transaction('files').objectStore('files').count();r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});return {root:library.root?.name||'',connected:!!library.root,trash:library.trash?.name||'',currentId:library.current,metadataConfigured:false,systems:SYSTEMS,stats:[],saveCount,playerActive:!!player};}
+  if(path==='/state'){const saveCount=await new Promise((resolve,reject)=>{const r=db.transaction('files').objectStore('files').count();r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});return {root:library.root?.name||'',connected:!!library.root,trash:library.trash?.name||'',currentId:library.current,metadataConfigured:false,systems:SYSTEMS,stats:[],saveCount,compatibility:compatibilityReport(library.games).counts,playerActive:!!player};}
   if(path==='/games')return library.games.map(publicGame);
+  if(path==='/compatibility/report')return compatibilityReport(library.games);
   if(path==='/scan')return scanFolder(body?.handle);
   if(path==='/current'){if(body.id){game(body.id);library.current=body.id;await save();}return {ok:true};}
-  if(path==='/player/start'){if(player)throw new Error('A game is already running.');const g=game(body.id);await permission(library.root);if(g.missing)throw new Error('ROM is missing. Rescan your folder.');player={id:g.id,lastTick:Date.now()};library.current=g.id;await save();return {ok:true};}
+  if(path==='/player/start'){if(player)throw new Error('A game is already running.');const g=game(body.id);await permission(library.root);if(g.missing)throw new Error('ROM is missing. Rescan your folder.');if(g.system==='nes'){const file=await g.handle.getFile();g.compatibility=await inspectNesFile(file);await save();if(isBlocked(g))throw new Error(g.compatibility.reason);}player={id:g.id,lastTick:Date.now()};library.current=g.id;await save();return {ok:true};}
   if(path==='/player/stop'){player=null;return {ok:true};}
   if(path==='/player/tick'){if(player?.id===body.id){const now=Date.now();if(body.playing)game(body.id).seconds+=Math.min(10,Math.floor((now-player.lastTick)/1000));player.lastTick=now;await save();}return {ok:true};}
   const decision=path.match(/^\/games\/([^/]+)\/decision$/);

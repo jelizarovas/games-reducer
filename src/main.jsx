@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Gamepad2, Search, Play, Check, Trash2, SkipForward, RotateCcw, FolderOpen, X, Download, Pause, Maximize, LoaderCircle, ChevronRight, Settings2, Info, Square, Menu, LogOut, ChevronDown, ArrowDownUp, ListFilter, Volume2, VolumeX, Move } from 'lucide-react';
 import { api } from './api';
+import {canQueue,isBlocked} from './nes-compatibility';
 import {pickRomFolder} from './browser-library';
 import {thumbnail} from './assets';
 import {BrowserSettings} from './BrowserSettings';
@@ -73,7 +74,7 @@ function App() {
         let { info, all } = await refresh();
         if (cancelled) return;
         setSystem('all');
-        setSelected(all.find(g => g.id === info.currentId && !g.missing)?.id || all.find(g => g.status === 'unreviewed' && !g.missing)?.id);
+        setSelected(all.find(g => g.id === info.currentId && canQueue(g))?.id || all.find(g => g.status === 'unreviewed' && canQueue(g))?.id);
       } catch (e) { if (!cancelled) { setError(e.message); setModal('settings'); } }
     })();
     return () => { cancelled = true; };
@@ -112,6 +113,7 @@ function App() {
   }
   async function playGame(game = current) {
     if (!game || game.missing || starting.current) return;
+    if(isBlocked(game)){setNotice(`${game.title}: ${game.compatibility.reason}`);return;}
     setRoute('player');
     starting.current = true; setError('');
     try {
@@ -132,7 +134,7 @@ function App() {
       await api(`/games/${id}/decision`, { status });
       const { all } = await refresh();
       const ordered = sortGames(all, sort);
-      const candidates = ordered.filter(g => matchesConsole(g, system) && matchesCategory(g, category) && g.status === 'unreviewed' && !g.missing && g.id !== id && g.title.toLowerCase().includes(query.toLowerCase()));
+      const candidates = ordered.filter(g => matchesConsole(g, system) && matchesCategory(g, category) && g.status === 'unreviewed' && canQueue(g) && g.id !== id && g.title.toLowerCase().includes(query.toLowerCase()));
       const previousIndex = ordered.findIndex(g => g.id === id);
       const next = candidates.find(g => ordered.indexOf(g) > previousIndex) || candidates[0];
       setNotice(`${current.title} ${status === 'discard' ? 'marked for cleanup' : status === 'keep' ? 'kept' : 'saved for later'}.`);
@@ -166,7 +168,7 @@ function App() {
     try {
       await stopPlayer();
       const result = await api('/scan', { handle: chosen });
-      const { all } = await refresh(); setSelected(all.find(g => matchesConsole(g, system) && !g.missing)?.id);
+      const { all } = await refresh(); setSelected(all.find(g => matchesConsole(g, system) && canQueue(g))?.id);
       setNotice(`Scanned ${result.count.toLocaleString()} games.${result.warnings.length ? ` ${result.warnings.length} files need attention: ${result.warnings.slice(0, 2).join('; ')}` : ''}`);
       setModal(null);
     } catch (e) { setError(e.message); }
@@ -211,7 +213,7 @@ function App() {
   function chooseSystem(next) {
     setSystem(next); setQuery(''); setFilter('unreviewed');
     if (playing) return;
-    const game = games.find(g => matchesConsole(g, next) && matchesCategory(g, category) && g.status === 'unreviewed' && !g.missing);
+    const game = games.find(g => matchesConsole(g, next) && matchesCategory(g, category) && g.status === 'unreviewed' && canQueue(g));
     setSelected(game?.id); api('/current', { filter: next, id: game?.id }).catch(e => setError(e.message));
   }
   function chooseFilter(next) {
@@ -226,7 +228,7 @@ function App() {
   function chooseCategory(next) {
     setCategory(next);
     if (playing) return;
-    const matches = sortGames(games.filter(g => matchesConsole(g, system) && matchesCategory(g, next) && (filter === 'all' || g.status === filter) && !g.missing && g.title.toLowerCase().includes(query.toLowerCase())), sort);
+    const matches = sortGames(games.filter(g => matchesConsole(g, system) && matchesCategory(g, next) && (filter === 'all' || g.status === filter) && canQueue(g) && g.title.toLowerCase().includes(query.toLowerCase())), sort);
     if (!matches.some(g => g.id === selected)) {
       setSelected(matches[0]?.id);
       if (matches[0]) api('/current', {id:matches[0].id,filter:system}).catch(e=>setError(e.message));
@@ -382,7 +384,7 @@ function App() {
         <button data-shortcut={phase==='decision'?'3':'Alt+3'} aria-label="Try game later" title="Later · X / 3" disabled={busy} onClick={() => decide('skip')}><SkipForward size={18}/><span>Later</span></button>
       </div>}
         {playing&&<button className="icon-button hold-turbo" data-shortcut="Tab" aria-label="Hold to fast-forward" title="Hold for 3× speed · RT / Tab" aria-pressed={fastForward} disabled={phase!=='playing'} onPointerDown={e=>{if(e.button!==0)return;e.preventDefault();e.currentTarget.setPointerCapture(e.pointerId);buttonSpeed(true);}} onPointerUp={()=>buttonSpeed(false)} onPointerCancel={()=>buttonSpeed(false)} onLostPointerCapture={()=>buttonSpeed(false)} onBlur={()=>buttonSpeed(false)} onKeyDown={e=>{if(['Space','Enter'].includes(e.code)){e.preventDefault();e.stopPropagation();buttonSpeed(true);}}} onKeyUp={e=>{if(['Space','Enter'].includes(e.code)){e.preventDefault();e.stopPropagation();buttonSpeed(false);}}}><FastForward size={18}/></button>}
-        {phase === 'ready' && <button className="icon-button" data-shortcut="Enter" aria-label="Play game" title="Play" disabled={!current || busy || current.missing} onClick={() => playGame()}><Play size={20}/></button>}
+        {phase === 'ready' && <button className="icon-button" data-shortcut="Enter" aria-label="Play game" title="Play" disabled={!current || busy || current.missing || isBlocked(current)} onClick={() => playGame()}><Play size={20}/></button>}
         {playing && <button className="icon-button" title="Back to library" aria-label="Stop game" onClick={() => stopPlayer().catch(e => setError(e.message))}><Square size={18}/></button>}
         {phase === 'playing' && <button className="icon-button" data-shortcut="Esc" aria-label="Review game" title="Review · Back + Start / Esc" onClick={review}><Pause size={20}/></button>}
         {phase === 'decision' && <button className="icon-button" data-shortcut="Enter" aria-label="Resume game" title="Resume" onClick={resume}><Play size={20}/></button>}

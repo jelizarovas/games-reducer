@@ -2,6 +2,7 @@ import {useLayoutEffect,useRef,useState} from 'react';
 import {Gamepad2,Check,Trash2} from 'lucide-react';
 import {cardDetails} from './library-view';
 import {thumbnail} from './assets';
+import {isBlocked} from './nes-compatibility';
 
 // Fixed row/card extents give continuous scrolling without shifting the viewport
 // when preceding games enter the rendered window.
@@ -30,7 +31,7 @@ export function GameList({games,selected,onPlay,busy,loading,resetKey,view='list
   const spacer=count=>horizontal?{width:count*itemSize,flex:`0 0 ${count*itemSize}px`}:{height:count*itemSize,gridColumn:'1 / -1'};
   return <div className={`game-list virtual-list sidebar-${view}`} style={{'--list-columns':columns,'--list-item-size':itemSize+'px'}} ref={viewport} onScroll={e=>setOffset(horizontal?e.currentTarget.scrollLeft:e.currentTarget.scrollTop)}>
     <div className="list-spacer" aria-hidden="true" style={spacer(start)}/>
-    {games.slice(start*columns,end*columns).map(game=><button key={game.id} className={`game-row ${selected===game.id?'selected':''}`} aria-label={game.title} aria-current={selected===game.id?'true':undefined} title={game.title} disabled={busy||loading||game.missing} onClick={()=>onPlay(game)}>
+    {games.slice(start*columns,end*columns).map(game=><button key={game.id} className={`game-row ${selected===game.id?'selected':''}`} aria-label={game.title} aria-current={selected===game.id?'true':undefined} title={isBlocked(game)?game.compatibility.reason:game.title} disabled={busy||loading||game.missing||isBlocked(game)} onClick={()=>onPlay(game)}>
       <span className="row-art"><Gamepad2 size={22}/><img loading="lazy" src={thumbnail(game)} alt="" onError={e=>{e.currentTarget.hidden=true;}}/></span>
       <span className="row-copy"><span className="row-title">{game.title}</span><small className="row-meta" title={cardDetails(game)}>{cardDetails(game)}</small></span>
       {game.status==='keep'&&<Check size={16} className="green"/>}{game.status==='discard'&&<Trash2 size={15} className="red"/>}

@@ -3,6 +3,7 @@ import {Search,LayoutGrid,List,Play} from 'lucide-react';
 import {Dropdown} from './Dropdown';
 import {thumbnail} from './assets';
 import {cardDetails} from './library-view';
+import {isBlocked} from './nes-compatibility';
 const statuses={unreviewed:'To try',keep:'Keepers',discard:'Marked',skip:'Later',all:'All games'};
 export function GamesPage({games,query,onQuery,filter,onFilter,category,onCategory,categories,sort,onSort,onPlay,busy,onSettings}){
   const [view,setView]=useState(()=>localStorage.getItem('games-reducer-view')||'grid');
@@ -24,7 +25,7 @@ export function GamesPage({games,query,onQuery,filter,onFilter,category,onCatego
     <div className={`catalog-viewport view-${view}`} ref={viewport} onScroll={e=>setPosition(e.currentTarget.scrollTop)} tabIndex={-1}>
       <div className="catalog-items" style={{gridTemplateColumns:`repeat(${columns},minmax(0,1fr))`}}>
         <div aria-hidden="true" style={{gridColumn:'1 / -1',height:firstRow*rowHeight}}/>
-        {games.slice(firstRow*columns,lastRow*columns).map(game=><button className="catalog-card" key={game.id} aria-label={`Play ${game.title}`} disabled={busy||game.missing} onClick={()=>onPlay(game)} style={{height:rowHeight}}>
+        {games.slice(firstRow*columns,lastRow*columns).map(game=><button className="catalog-card" key={game.id} aria-label={`Play ${game.title}`} title={isBlocked(game)?game.compatibility.reason:game.title} disabled={busy||game.missing||isBlocked(game)} onClick={()=>onPlay(game)} style={{height:rowHeight}}>
           <span className="catalog-art"><img loading="lazy" src={thumbnail(game)} alt=""/></span>
           <span className="catalog-copy"><strong>{game.title}</strong><small title={cardDetails(game)}>{cardDetails(game)}</small><span className={`catalog-status status-${game.status}`}>{statuses[game.status]}{game.missing?' · Missing':''}</span></span>
           <Play className="catalog-play" size={18}/>

@@ -1,3 +1,4 @@
+import {compatibilityLabel} from './nes-compatibility.js';
 export const consoleNames = { all: 'All', megadrive: 'Genesis', snes: 'SNES', nes: 'NES' };
 export const matchesConsole = (game, system) => system === 'all' || game.system === system;
 export function gameCategories(metadata = {}) {
@@ -12,7 +13,7 @@ export function gameCategory(metadata = {}) {
   const specific=normalized.filter(g=>g.toLowerCase()!=='action');
   return (specific.length?specific:normalized).slice(0,2).join(', ');
 }
-export const cardDetails = game => [releaseYear(game.metadata),consoleNames[game.system],gameCategory(game.metadata)].filter(Boolean).join(' · ');
+export const cardDetails = game => [compatibilityLabel(game),releaseYear(game.metadata),consoleNames[game.system],gameCategory(game.metadata)].filter(Boolean).join(' · ');
 export function releaseYear(metadata = {}) {
   const value = String(metadata.released || metadata.releasedate || metadata.year || '').trim();
   const match = value.match(/^(19\d{2}|20\d{2})(?:$|[-/.T\d])/);

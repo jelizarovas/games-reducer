@@ -3,6 +3,7 @@ import {FolderOpen,Download,Upload} from 'lucide-react';
 import {pickTrashFolder,exportBackup,importBackup} from './browser-library';
 import {validateBackup} from './browser-core';
 import {assetUrl} from './assets';
+import {api} from './api';
 
 export function downloadJson(data,name){
   const url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));
@@ -24,6 +25,7 @@ export function BrowserSettings({state,busy,onScan,onStop,onRefresh,onError,onFl
       <div className="settings-buttons"><button className="primary" disabled={disabled} onClick={()=>onScan(true)}><FolderOpen size={17}/> Choose ROM folder</button><button disabled={disabled||!state?.connected} onClick={()=>onScan(false)}>Reconnect / rescan</button></div>
       <p className="help">Choose the folder containing megadrive, snes, and nes, or one of those console folders. ROMs stay on this device.</p>
     </div>
+    {state?.compatibility?.total>0&&<div className="settings-section"><h3>NES compatibility</h3><p>{state.compatibility.supported} supported · {state.compatibility.unsupported} unsupported · {state.compatibility.invalid} invalid · {state.compatibility.unchecked} unchecked</p><p className="help">Unsupported and invalid ROMs stay in your library and are skipped in the next-game queue. Header checks do not verify gameplay. Reconnect / rescan to check new or changed files.</p><button disabled={disabled} onClick={async()=>{try{downloadJson(await api('/compatibility/report'),'nes-compatibility.json');}catch(e){onError(e.message);}}}><Download size={17}/> Export compatibility report</button></div>}
     <div className="settings-section"><h3>Backups</h3><div className="settings-buttons"><button disabled={disabled} onClick={exportData}><Download size={17}/> Export backup</button><button disabled={disabled} onClick={()=>input.current.click()}><Upload size={17}/> Import backup</button></div>
       <input ref={input} type="file" accept=".json,application/json" hidden aria-label="Backup file" onChange={readBackup}/>
       <p className="help">Includes review progress, metadata, and in-game cartridge saves. Save inside the game before exporting. ROMs and an exact paused-game snapshot are not included.</p>

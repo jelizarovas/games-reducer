@@ -33,7 +33,7 @@ const watch=p=>{p.on('request',r=>{if(new URL(r.url()).pathname.includes('/api/'
 const openSettings=async()=>{await page.getByRole('button',{name:'More actions',exact:true}).click();await page.getByRole('menuitem',{name:'Library settings',exact:true}).click();};
 const closeDialog=()=>page.getByRole('button',{name:'Close dialog',exact:true}).click();
 const playing=()=>page.locator('.screen[data-phase=playing]').waitFor({timeout:45000});
-const store=()=>page.evaluate(()=>new Promise((resolve,reject)=>{const r=indexedDB.open('games-reducer:/games-reducer/');r.onsuccess=()=>{const db=r.result,q=db.transaction('library').objectStore('library').get('state');q.onsuccess=()=>{const s=q.result;db.close();resolve({games:s.games.map(({handle,...g})=>g),pending:s.pending,history:s.history});};q.onerror=()=>reject(q.error);};r.onerror=()=>reject(r.error);}));
+const store=()=>page.evaluate(()=>new Promise((resolve,reject)=>{const r=indexedDB.open('games-reducer:/games-reducer/');r.onsuccess=()=>{const db=r.result,q=db.transaction('library').objectStore('library').get('state');q.onsuccess=()=>{const s=q.result;db.close();resolve({games:s.games.map(({handle,...g})=>g),pending:s.pending,history:s.history,current:s.current});};q.onerror=()=>reject(q.error);};r.onerror=()=>reject(r.error);}));
 try{
   await page.goto(url+'no-cover.svg');
   await page.evaluate(async()=>{
@@ -167,6 +167,25 @@ try{
   assert.equal(await page.getByRole('alert').count(),0);
   await page.getByRole('button',{name:'Stop game',exact:true}).click();
   console.log('PASS Golf Ko Open mapper 33 boots, renders and responds to Start');
+  // Unsupported/malformed cartridges are identified by scanning, never sent to the player.
+  await page.evaluate(async encoded=>{
+    const root=await navigator.storage.getDirectory(),roms=await root.getDirectoryHandle('roms'),dir=await roms.getDirectoryHandle('nes');
+    const bytes=Uint8Array.from(atob(encoded),c=>c.charCodeAt(0));bytes[6]=(bytes[6]&15)|0x30;bytes[7]=0x10;bytes.fill(0,8,16);
+    for(const [name,data]of [['Golf Z Unsupported.nes',bytes],['Golf Z Truncated.nes',bytes.slice(0,16)]]){const file=await dir.getFileHandle(name,{create:true}),writer=await file.createWritable();await writer.write(data);await writer.close();}
+  },fixtures.find(f=>f.system==='nes').bytes);
+  await openSettings();await page.getByRole('button',{name:'Choose ROM folder',exact:true}).click();
+  for(const title of ['Golf Z Unsupported','Golf Z Truncated'])assert.equal(await page.getByRole('button',{name:title,exact:true}).isDisabled(),true);
+  assert.ok(await page.getByRole('button',{name:'Golf Z Unsupported',exact:true}).innerText().then(text=>text.includes('Unsupported mapper 19')));
+  await openSettings();const reportDownload=page.waitForEvent('download');await page.getByRole('button',{name:'Export compatibility report',exact:true}).click();const report=JSON.parse(fs.readFileSync(await(await reportDownload).path(),'utf8'));assert.equal(report.counts.unsupported,1);assert.equal(report.counts.invalid,1);await closeDialog();
+  await page.getByRole('button',{name:'Golf Ko Open',exact:true}).click();await playing();await page.getByRole('button',{name:'Keep game',exact:true}).click();await playing();
+  const checked=await store();assert.ok(!checked.games.find(g=>g.id===checked.current)?.title?.startsWith('Golf Z'));
+  for(const title of ['Golf Z Unsupported','Golf Z Truncated'])assert.equal(checked.games.find(g=>g.title===title).status,'unreviewed');
+  await page.getByRole('button',{name:'Stop game',exact:true}).click();
+  // Simulate an existing library from before compatibility records were added.
+  await page.evaluate(()=>new Promise((resolve,reject)=>{const r=indexedDB.open('games-reducer:/games-reducer/');r.onsuccess=()=>{const db=r.result,tx=db.transaction('library','readwrite'),store=tx.objectStore('library'),get=store.get('state');get.onsuccess=()=>{const state=get.result;for(const game of state.games)delete game.compatibility;store.put(state,'state');};tx.oncomplete=()=>{db.close();resolve();};tx.onerror=()=>reject(tx.error);};}));
+  await page.reload();await page.getByRole('button',{name:'Golf Z Unsupported',exact:true}).waitFor();assert.equal(await page.getByRole('button',{name:'Golf Z Unsupported',exact:true}).isDisabled(),true);
+  assert.equal((await store()).games.find(g=>g.title==='Golf Ko Open').status,'keep');
+  console.log('PASS compatibility scan/report, queue exclusion, disabled launch and existing-library upgrade without changing decisions');
   // Large-library rendering uses synthetic records in this disposable profile only.
   await page.evaluate(()=>new Promise((resolve,reject)=>{const r=indexedDB.open('games-reducer:/games-reducer/');r.onsuccess=()=>{const db=r.result,tx=db.transaction('library','readwrite'),store=tx.objectStore('library'),get=store.get('state');get.onsuccess=()=>{const state=get.result,base=state.games[0];state.games=Array.from({length:5000},(_,i)=>({...base,id:i.toString(16).padStart(24,'0'),relative_path:'nes/Fixture '+i+'.nes',title:'Fixture '+String(i).padStart(4,'0'),status:'unreviewed'}));store.put(state,'state');};tx.oncomplete=()=>{db.close();resolve();};tx.onerror=()=>reject(tx.error);};}));
   await page.goto(url+'games/');await page.getByRole('region',{name:'Games library',exact:true}).waitFor();

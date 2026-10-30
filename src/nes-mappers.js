@@ -35,3 +35,4 @@ export class Mapper33 extends Mapper0 {
 }
 
 Mappers[33] = Mapper33;
+export const supportedNesMappers = Object.keys(Mappers).map(Number).sort((a,b)=>a-b);

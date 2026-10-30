@@ -15,6 +15,10 @@ Supported: Genesis / Mega Drive, SNES, and NES cartridge files, plus ZIPs contai
 
 NES support includes a local mapper 33 extension for Taito cartridges such as Golf Ko Open, with PRG/CHR bank switching and mirroring. Other mappers outside JSNES's supported set may still be unsupported.
 
+Folder scans check every NES header against the installed mapper registry, including ROMs inside ZIPs. Unsupported or malformed games remain visible with an explanation, cannot launch, and are excluded from automatic next-game selection. Their review status and files stay unchanged. Existing libraries are checked on reload when folder permission is already granted; otherwise use **Reconnect / rescan**. Settings shows counts and an **Export compatibility report** button. These are header checks, not a gameplay guarantee.
+
+To audit a local collection without modifying ROMs or browser progress, run `node scripts/audit-nes.mjs "C:/RetroBat/roms/nes"`. The report is saved to `test-results/nes-compatibility.json`; an optional second argument chooses another report path.
+
 ## Local progress and backups
 
 IndexedDB stores the folder handle, inventory, keep/remove/later decisions, play time, and undo history. ROMs remain in the chosen folder and are read only for playback or verified cleanup. The app makes no API requests and uploads no ROMs or review data. Only one tab can edit the library at a time.
