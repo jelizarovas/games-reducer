@@ -152,6 +152,21 @@ try{
   await page.locator('input[type=file]').setInputFiles({name:'v1.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(oldBackup))});await page.getByRole('button',{name:'Import these records',exact:true}).click();await page.getByRole('status').filter({hasText:'Restored'}).waitFor();assert.deepEqual((await batteryBytes())[0].slice(0,2),[1,0x37]);
   await addBattery();await page.getByRole('button',{name:'Choose ROM folder',exact:true}).click();await page.getByRole('button',{name:'Battery test',exact:true}).click();await playing();await page.waitForTimeout(500);await page.getByRole('button',{name:'Stop game',exact:true}).click();assert.deepEqual((await batteryBytes())[0].slice(0,2),[2,0x37]);
   console.log('PASS real NES battery writes, export while paused, fresh-profile restore and next-boot SRAM load; v1 preserves saves');
+  // Exercise the reported unsupported cartridge using a private, disposable ROM copy.
+  const golfBytes=fs.readFileSync(path.join(romRoot,'nes/Golf Ko Open (J).nes')).toString('base64');
+  await page.evaluate(async base64=>{const root=await navigator.storage.getDirectory(),roms=await root.getDirectoryHandle('roms'),dir=await roms.getDirectoryHandle('nes'),file=await dir.getFileHandle('Golf Ko Open (J).nes',{create:true}),writer=await file.createWritable();await writer.write(Uint8Array.from(atob(base64),c=>c.charCodeAt(0)));await writer.close();},golfBytes);
+  await openSettings();await page.getByRole('button',{name:'Choose ROM folder',exact:true}).click();
+  await page.getByRole('button',{name:'Golf Ko Open',exact:true}).click();await playing();
+  await page.waitForFunction(()=>Number(document.querySelector('.nes-canvas')?.dataset.frames)>300);
+  const golfCanvas=page.locator('.nes-canvas canvas');
+  const golfTitle=await golfCanvas.evaluate(canvas=>canvas.toDataURL());
+  await golfCanvas.screenshot({path:path.join(run,'mapper33-title.png')});
+  await page.keyboard.down('Enter');await page.waitForTimeout(250);await page.keyboard.up('Enter');await page.waitForTimeout(2000);
+  assert.notEqual(await golfCanvas.evaluate(canvas=>canvas.toDataURL()),golfTitle,'Start advances Golf Ko Open beyond its title screen');
+  await golfCanvas.screenshot({path:path.join(run,'mapper33-start.png')});
+  assert.equal(await page.getByRole('alert').count(),0);
+  await page.getByRole('button',{name:'Stop game',exact:true}).click();
+  console.log('PASS Golf Ko Open mapper 33 boots, renders and responds to Start');
   // Large-library rendering uses synthetic records in this disposable profile only.
   await page.evaluate(()=>new Promise((resolve,reject)=>{const r=indexedDB.open('games-reducer:/games-reducer/');r.onsuccess=()=>{const db=r.result,tx=db.transaction('library','readwrite'),store=tx.objectStore('library'),get=store.get('state');get.onsuccess=()=>{const state=get.result,base=state.games[0];state.games=Array.from({length:5000},(_,i)=>({...base,id:i.toString(16).padStart(24,'0'),relative_path:'nes/Fixture '+i+'.nes',title:'Fixture '+String(i).padStart(4,'0'),status:'unreviewed'}));store.put(state,'state');};tx.oncomplete=()=>{db.close();resolve();};tx.onerror=()=>reject(tx.error);};}));
   await page.goto(url+'games/');await page.getByRole('region',{name:'Games library',exact:true}).waitFor();

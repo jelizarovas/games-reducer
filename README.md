@@ -13,6 +13,8 @@ The first visit may reload once while the browser enables the emulator's isolate
 
 Supported: Genesis / Mega Drive, SNES, and NES cartridge files, plus ZIPs containing exactly one supported ROM. Compressed and expanded cartridge limits are 64 MiB. CD games, PS1, PS2, and 7z collections are not supported.
 
+NES support includes a local mapper 33 extension for Taito cartridges such as Golf Ko Open, with PRG/CHR bank switching and mirroring. Other mappers outside JSNES's supported set may still be unsupported.
+
 ## Local progress and backups
 
 IndexedDB stores the folder handle, inventory, keep/remove/later decisions, play time, and undo history. ROMs remain in the chosen folder and are read only for playback or verified cleanup. The app makes no API requests and uploads no ROMs or review data. Only one tab can edit the library at a time.

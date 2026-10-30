@@ -1,5 +1,6 @@
 import { useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
 import { Browser, Controller } from 'jsnes';
+import './nes-mappers';
 import { engineKey,keyboardCode } from './player-input';
 import {readRom,readCartridgeSave,writeCartridgeSave,SAVE_DATABASE} from './browser-library';
 import {assetUrl} from './assets';
@@ -75,7 +76,8 @@ export const Player = forwardRef(function Player({ game, paused, muted, onLoaded
             for (let i = 0; i < speed.current; i++) { generate(); frames++; }
             if (container.current) container.current.dataset.frames = frames;
           };
-          emulator.nes.loadROM(bytes); nes.current = emulator;
+          // Own the instance before loading so failed ROMs also release listeners/audio.
+          nes.current = emulator; emulator.nes.loadROM(bytes);
           if(emulator.nes.rom.batteryRam&&saved.sav?.length===0x2000){emulator.nes.rom.batteryRam=Array.from(saved.sav);emulator.nes.mmap.loadBatteryRam();}
           emulator.start();
           container.current.dataset.speed = 1;
