@@ -13,6 +13,7 @@ const fixtures=Object.entries(patterns).map(([system,pattern])=>{
   return {system,name,bytes:fs.readFileSync(path.join(romRoot,system,name)).toString('base64')};
 });
 const apiCalls=[];
+let workerRevision=0;
 const server=http.createServer((req,res)=>{
   const pathname=decodeURIComponent(new URL(req.url,'http://localhost').pathname);
   if(pathname.includes('/api/'))apiCalls.push(pathname);
@@ -20,7 +21,8 @@ const server=http.createServer((req,res)=>{
   let file=path.resolve(out,pathname.slice(prefix.length)||'index.html');
   if(fs.existsSync(file)&&fs.statSync(file).isDirectory())file=path.join(file,'index.html');
   if(!file.startsWith(out+path.sep)||!fs.existsSync(file)||!fs.statSync(file).isFile()){res.writeHead(404).end();return;}
-  const types={'.html':'text/html','.js':'text/javascript','.css':'text/css','.json':'application/json','.wasm':'application/wasm','.svg':'image/svg+xml','.webp':'image/webp'};
+  if(workerRevision&&pathname.endsWith('/isolation-sw.js')){res.writeHead(200,{'Content-Type':'text/javascript','Cache-Control':'no-store'}).end(fs.readFileSync(file,'utf8').replace(/"version":"[^"]+"/,`"version":"update-test-${workerRevision}"`));return;}
+  const types={'.html':'text/html','.js':'text/javascript','.css':'text/css','.json':'application/json','.wasm':'application/wasm','.svg':'image/svg+xml','.webp':'image/webp','.png':'image/png','.webmanifest':'application/manifest+json'};
   // Deliberately no COOP/COEP headers: this reproduces GitHub Pages hosting.
   res.writeHead(200,{'Content-Type':types[path.extname(file)]||'application/octet-stream','Cache-Control':'no-store'});fs.createReadStream(file).pipe(res);
 });
@@ -29,7 +31,7 @@ const url=process.env.BROWSER_URL||`http://127.0.0.1:${server.address().port}${p
 const browser=await chromium.launch({executablePath:process.env.CHROME_PATH||'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
 const context=await browser.newContext({viewport:{width:1440,height:900},acceptDownloads:true});
 let page=await context.newPage();const errors=[];
-const watch=p=>{p.on('request',r=>{if(new URL(r.url()).pathname.includes('/api/'))apiCalls.push(r.url());});p.on('pageerror',e=>{if(!e.message.includes('Using exceptions for control flow'))errors.push(e.message);});};watch(page);
+const watch=p=>{p.on('console',m=>{if(m.type()==='error')console.log('Browser console:',m.text().slice(0,5000));});p.on('requestfailed',r=>console.log('Failed request:',r.url(),r.failure()?.errorText));p.on('request',r=>{if(new URL(r.url()).pathname.includes('/api/'))apiCalls.push(r.url());});p.on('pageerror',e=>{if(!e.message.includes('Using exceptions for control flow'))errors.push(e.message);});};watch(page);
 const openSettings=async()=>{await page.getByRole('button',{name:'More actions',exact:true}).click();await page.getByRole('menuitem',{name:'Library settings',exact:true}).click();};
 const closeDialog=()=>page.getByRole('button',{name:'Close dialog',exact:true}).click();
 const playing=()=>page.locator('.screen[data-phase=playing]').waitFor({timeout:45000});
@@ -42,6 +44,14 @@ try{
   });
   await page.goto(url);await page.getByRole('button',{name:'Choose folder',exact:true}).waitFor({timeout:30000});
   assert.equal(await page.evaluate(()=>crossOriginIsolated),true,'Service worker supplies isolation without host headers');
+  const cdp=await context.newCDPSession(page);const manifest=await cdp.send('Page.getAppManifest');assert.equal(manifest.errors.length,0);assert.equal(JSON.parse(manifest.data).display,'standalone');
+  const installability=await cdp.send('Page.getInstallabilityErrors');assert.deepEqual(installability.installabilityErrors.filter(error=>error.errorId!=='in-incognito'),[]);await cdp.detach();
+  console.log('PASS installable manifest, PNG icons and service worker');
+  if(!process.env.BROWSER_URL){
+    const installContext=await chromium.launchPersistentContext(path.join(run,'install-profile'),{executablePath:process.env.CHROME_PATH||'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
+    try{const installPage=await installContext.newPage();await installPage.goto(url);await installPage.getByRole('button',{name:'Choose folder',exact:true}).waitFor();const session=await installContext.newCDPSession(installPage);assert.deepEqual((await session.send('Page.getInstallabilityErrors')).installabilityErrors,[]);await session.detach();}finally{await installContext.close();}
+    console.log('PASS installation eligibility in a normal disposable Chrome profile');
+  }
   assert.equal(await page.locator('.game-row').count(),0,'No implicit access to the old PC folder');
   await page.evaluate(async files=>{
     const opfs=await navigator.storage.getDirectory(),root=await opfs.getDirectoryHandle('roms',{create:true}),trash=await opfs.getDirectoryHandle('trash',{create:true});
@@ -70,6 +80,10 @@ try{
   for(let i=0;i<2;i++){await page.getByRole('button',{name:'More actions',exact:true}).click();await page.getByRole('menuitem',{name:'Undo last decision',exact:true}).click();}
   await page.getByRole('combobox',{name:'Console',exact:true}).click();await page.getByRole('option',{name:'All',exact:true}).click();
   console.log('PASS Keep and Remove automatically hand off to a next game that renders frames');
+  await openSettings();await page.getByRole('status').filter({hasText:'App and emulators ready offline.'}).waitFor();
+  if(!process.env.BROWSER_URL){await page.getByRole('button',{name:'Download all covers',exact:true}).click();await page.getByRole('button',{name:'All covers saved',exact:true}).waitFor({timeout:180000});}
+  await closeDialog();await context.setOffline(true);await page.reload();await page.locator('.game-row').first().waitFor();assert.equal(await page.evaluate(()=>crossOriginIsolated),true);
+  await page.goto(url+'games/');await page.getByRole('region',{name:'Games library',exact:true}).waitFor();await page.goto(url);await page.locator('.game-row').first().waitFor();
   for(const system of order){
     const g=data.games.find(g=>g.system===system);
     await page.getByRole('button',{name:g.title,exact:true}).click();await playing();
@@ -99,6 +113,18 @@ try{
       await page.frames().find(f=>f.url().includes('/play.html')).evaluate(async()=>{const saves=await import(new URL('save-store.js',location.href).href),bytes=new Uint8Array(8192);bytes.set([11,22,33,44]);await saves.writeSaveFile(window.reducerChannel.current_file_name(),'sav',bytes);await window.reducerFlushSaves();});
     }
     await page.getByRole('button',{name:'Stop game',exact:true}).click();console.log('PASS browser-only playback, mute, pause/resume and live filters:',system);
+  }
+  await context.setOffline(false);console.log('PASS offline cold reload, /games route, and all three emulators without network');
+  if(!process.env.BROWSER_URL){
+    await page.getByRole('button',{name:data.games.find(g=>g.system==='megadrive').title,exact:true}).click();await playing();
+    const engine=page.frames().find(f=>f.url().includes('/play.html'));await engine.evaluate(()=>window.updateSentinel='running');
+    workerRevision++;await page.evaluate(async()=>{const registration=await navigator.serviceWorker.getRegistration();await registration.update();});
+    await page.waitForFunction(async()=>!!(await navigator.serviceWorker.getRegistration()).waiting,{},{timeout:60000});
+    assert.equal(await engine.evaluate(()=>window.updateSentinel),'running');await playing();
+    await openSettings();await page.getByRole('button',{name:'Update & reload',exact:true}).click();await page.waitForLoadState('domcontentloaded');await page.locator('.game-row').first().waitFor();
+    await page.waitForFunction(()=>!document.querySelector('iframe[title^="Playing"]'));assert.equal((await store()).games.length,3);
+    await openSettings();await page.getByRole('status').filter({hasText:'App and emulators ready offline.'}).waitFor();await page.getByRole('button',{name:'All covers saved',exact:true}).waitFor();await closeDialog();
+    console.log('PASS update waits during play; user applies after saves flush; cover cache and library survive');
   }
   const nes=data.games.find(g=>g.system==='nes');await page.getByRole('button',{name:nes.title,exact:true}).click();await playing();await page.getByRole('button',{name:'Keep game',exact:true}).click();
   await page.waitForFunction(()=>document.querySelector('.screen')?.dataset.phase==='playing'||document.querySelector('.screen')?.dataset.phase==='ready');

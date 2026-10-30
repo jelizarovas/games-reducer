@@ -1,0 +1,12 @@
+{
+  "id": "./", "name": "Games Reducer", "short_name": "Games Reducer",
+  "description": "Play and review your local retro game collection.",
+  "start_url": "./", "scope": "./", "display": "standalone",
+  "background_color": "#1b1e24", "theme_color": "#1b1e24",
+  "icons": [
+    {"src":"icons/icon-192.png","sizes":"192x192","type":"image/png","purpose":"any"},
+    {"src":"icons/icon-512.png","sizes":"512x512","type":"image/png","purpose":"any"},
+    {"src":"icons/maskable-512.png","sizes":"512x512","type":"image/png","purpose":"maskable"}
+  ],
+  "shortcuts": [{"name":"Games library","url":"./games/"}]
+}

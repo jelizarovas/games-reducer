@@ -13,6 +13,10 @@ The first visit may reload once while the browser enables the emulator's isolate
 
 Supported: Genesis / Mega Drive, SNES, and NES cartridge files, plus ZIPs containing exactly one supported ROM. Compressed and expanded cartridge limits are 64 MiB. CD games, PS1, PS2, and 7z collections are not supported.
 
+Install the published app from **… → Install app** when Chrome/Edge offers installation, or use the browser's install option. In **Settings → Install & offline**, wait for **App and emulators ready offline** before disconnecting. The app, metadata, and all three emulators are cached automatically; covers save as you browse. **Download all covers** saves the full artwork collection (about 70 MB) with resumable progress. ROMs stay in your chosen folder, so keep that folder available on the device. Offline support applies to the production build; Vite development remains uncached.
+
+Updates download in the background and wait while the app is open. **Update & reload** stops the running game, flushes cartridge saves, and activates the update. Closing all app windows also lets a waiting update activate. Clearing browser storage removes both offline downloads and local progress; keep exported backups. Install prompts depend on browser support, and native folder permission may need reconnecting after reopening.
+
 NES support includes a local mapper 33 extension for Taito cartridges such as Golf Ko Open, with PRG/CHR bank switching and mirroring. Other mappers outside JSNES's supported set may still be unsupported.
 
 Folder scans check every NES header against the installed mapper registry, including ROMs inside ZIPs. Unsupported or malformed games remain visible with an explanation, cannot launch, and are excluded from automatic next-game selection. Their review status and files stay unchanged. Existing libraries are checked on reload when folder permission is already granted; otherwise use **Reconnect / rescan**. Settings shows counts and an **Export compatibility report** button. These are header checks, not a gameplay guarantee.

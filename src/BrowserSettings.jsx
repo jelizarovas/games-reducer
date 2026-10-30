@@ -4,6 +4,7 @@ import {pickTrashFolder,exportBackup,importBackup} from './browser-library';
 import {validateBackup} from './browser-core';
 import {assetUrl} from './assets';
 import {api} from './api';
+import {PwaSettings} from './PwaControls';
 
 export function downloadJson(data,name){
   const url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));
@@ -21,6 +22,7 @@ export function BrowserSettings({state,busy,onScan,onStop,onRefresh,onError,onFl
     setWorking(true);try{await onStop();const result=await importBackup(backup);await onRefresh();setBackup(null);setMessage(`Restored ${result.matched} games and ${result.saves} cartridge saves. ${result.pending} will match after you choose and scan their ROM folder.`);}catch(e){onError(e.message);}finally{setWorking(false);}
   }
   return <>
+    <PwaSettings onStop={onStop} onError={onError} busy={disabled}/>
     <div className="settings-section"><h3>ROM folder</h3><p>{state?.root||'No folder selected'}</p>
       <div className="settings-buttons"><button className="primary" disabled={disabled} onClick={()=>onScan(true)}><FolderOpen size={17}/> Choose ROM folder</button><button disabled={disabled||!state?.connected} onClick={()=>onScan(false)}>Reconnect / rescan</button></div>
       <p className="help">Choose the folder containing megadrive, snes, and nes, or one of those console folders. ROMs stay on this device.</p>

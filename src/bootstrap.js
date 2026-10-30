@@ -1,10 +1,11 @@
-import {assetUrl} from './assets';
+import {registerPwa} from './pwa';
 async function start(){
   if(!window.isSecureContext||!window.showDirectoryPicker)throw new Error('Open this site in desktop Edge or Chrome over HTTPS to choose your ROM folder.');
+  if(import.meta.env.PROD||!crossOriginIsolated)await registerPwa();
   if(!crossOriginIsolated){
     if(!navigator.serviceWorker)throw new Error('This browser cannot start the game engine. Use desktop Edge or Chrome.');
-    await navigator.serviceWorker.register(assetUrl('isolation-sw.js'),{scope:import.meta.env.BASE_URL});
-    await navigator.serviceWorker.ready;
+    document.getElementById('root').textContent='Preparing Games Reducer for offline use…';
+    await Promise.race([navigator.serviceWorker.ready,new Promise((_,reject)=>setTimeout(()=>reject(new Error('Offline setup could not finish. Reconnect to the internet and try again.')),120000))]);
     if(!navigator.serviceWorker.controller)await new Promise((resolve,reject)=>{
       const timer=setTimeout(()=>reject(new Error('Browser setup timed out. Reload to try again.')),10000);
       navigator.serviceWorker.addEventListener('controllerchange',()=>{clearTimeout(timer);resolve();},{once:true});

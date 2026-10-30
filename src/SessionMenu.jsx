@@ -1,8 +1,11 @@
 import {Ellipsis,LogOut,RotateCcw,Menu,Settings2,LayoutGrid,Play,Keyboard} from 'lucide-react';
 import {Dropdown} from './Dropdown';
 import {summarizeGames,playTime} from './progress';
+import {usePwa} from './PwaControls';
+import {installPwa} from './pwa';
 
 export function SessionMenu({onFinish,onUndo,onController,onSettings,onShortcuts,onNavigate,busy,games=[],saveCount=0,onRefresh}) {
+  const pwa=usePwa();
   const summary=summarizeGames(games),percent=summary.total?Math.round(summary.reviewed/summary.total*100):0;
   const progress=<div className="menu-progress" aria-label="Collection progress">
     <div className="menu-progress-heading"><strong>Progress</strong><span>{summary.reviewed.toLocaleString()} / {summary.total.toLocaleString()} reviewed</span></div>
@@ -17,6 +20,7 @@ export function SessionMenu({onFinish,onUndo,onController,onSettings,onShortcuts
     {value:'controller',label:'Controller menu',icon:<Menu size={17}/>,onSelect:onController},
     {value:'settings',label:'Library settings',icon:<Settings2 size={17}/>,onSelect:onSettings},
     {value:'shortcuts',label:'Keyboard shortcuts',icon:<Keyboard size={17}/>,onSelect:onShortcuts},
+    ...(pwa.installable?[{value:'install',label:'Install app',onSelect:installPwa}]:[]),
     {value:'finish',label:'Finish session',icon:<LogOut size={17}/>,disabled:busy,onSelect:onFinish},
   ]}><Ellipsis size={21}/></Dropdown>;
 }

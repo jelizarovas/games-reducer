@@ -1,0 +1,13 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import {createHash} from 'node:crypto';
+import {engineDirectory} from './engine-version.mjs';
+const walk=directory=>fs.readdirSync(path.join('dist',directory),{withFileTypes:true}).flatMap(entry=>entry.isDirectory()?walk(`${directory}/${entry.name}`):[`${directory}/${entry.name}`]);
+const core=['index.html','games/index.html','manifest.webmanifest','favicon.svg','no-cover.svg',...walk('icons'),...walk('assets'),'catalog/games.json',...walk(engineDirectory).filter(file=>!file.endsWith('.zip'))];
+const covers=walk('catalog/covers');
+const hash=createHash('sha256');
+for(const file of [...core,...covers].sort())hash.update(file).update(/\.(js|json|html|svg|css|webmanifest|txt)$/.test(file)?fs.readFileSync(path.join('dist',file),'utf8').replaceAll('\r\n','\n'):fs.readFileSync(path.join('dist',file)));
+const template=fs.readFileSync('public/isolation-sw.js','utf8').replaceAll('\r\n','\n');hash.update(template);
+const config={version:hash.digest('hex').slice(0,16),core,covers,coverBytes:covers.reduce((n,f)=>n+fs.statSync(path.join('dist',f)).size,0)};
+fs.writeFileSync('dist/isolation-sw.js',template.replace('/* OFFLINE_CONFIG */ null',JSON.stringify(config)));
+console.log(`Offline app: ${core.length} assets; ${covers.length} optional covers (${Math.round(config.coverBytes/1048576)} MB).`);
