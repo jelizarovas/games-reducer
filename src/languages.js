@@ -19,6 +19,19 @@ export function gameLanguages(game){
   const inferred=unique(tags.flatMap(tag=>tag.toLowerCase().split(/,\s*/).flatMap(region=>/^[jue]{2,3}$/.test(region)?[...region].map(part=>regions[part]):[Object.hasOwn(regions,region.trim())?regions[region.trim()]:undefined])));
   return {codes:inferred,source:inferred.length?'Estimated from region':'Unknown',estimated:!!inferred.length};
 }
-export function matchesLanguage(game,language){const {codes}=gameLanguages(game);return language==='all'||(language==='unknown'?!codes.length:codes.includes(language));}
+export function normalizeLanguages(value){
+  if(typeof value==='string'){try{value=JSON.parse(value);}catch{/* Migrate the original single-language preference. */}}
+  if(!Array.isArray(value))value=[value];
+  const valid=unique(value.filter(v=>v==='all'||v==='unknown'||Object.hasOwn(languageNames,v)));
+  return valid.includes('all')?['all']:valid;
+}
+export function readLanguages(value){return value===null?['all']:normalizeLanguages(value);}
+export function toggleLanguage(value,choice){
+  if(choice==='all')return ['all'];
+  const selected=normalizeLanguages(value).filter(v=>v!=='all');
+  return selected.includes(choice)?selected.filter(v=>v!==choice):[...selected,choice];
+}
+export function languageLabel(value){const selected=normalizeLanguages(value);return selected.includes('all')?'All languages':selected.length?selected.map(v=>v==='unknown'?'Unknown':languageNames[v]).join(' + '):'No languages';}
+export function matchesLanguage(game,language){const selected=normalizeLanguages(language);if(selected.includes('all'))return true;const {codes}=gameLanguages(game);return !codes.length?selected.includes('unknown'):codes.some(code=>selected.includes(code));}
 export function languageDetails(game){const result=gameLanguages(game);return result.codes.length?`${result.codes.map(code=>languageNames[code]).join(', ')} · ${result.source}`:'Unknown';}
 export const languageOptions=games=>[{value:'all',label:'All languages'},{value:'en',label:'English'},...[...new Set(games.flatMap(game=>gameLanguages(game).codes))].filter(code=>code!=='en').sort((a,b)=>languageNames[a].localeCompare(languageNames[b])).map(value=>({value,label:languageNames[value]})),{value:'unknown',label:'Unknown'}];

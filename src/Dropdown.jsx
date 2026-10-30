@@ -2,7 +2,7 @@ import {useEffect,useId,useLayoutEffect,useRef,useState} from 'react';
 import {createPortal} from 'react-dom';
 import {ChevronDown,Check} from 'lucide-react';
 
-export function Dropdown({label,value,options,onChange,children,triggerClassName='',menu=false,width=210,panelHeader,maxHeight=320,onOpen,showArrow=true,shortcut}) {
+export function Dropdown({label,value,options=[],onChange,children,triggerClassName='',menu=false,width=210,panelHeader,maxHeight=320,onOpen,showArrow=true,shortcut,multiple=false,renderPanel}) {
   const [open,setOpen]=useState(false),[position,setPosition]=useState({left:0,top:0});
   const trigger=useRef(null),panel=useRef(null),id=useId();
   const close=(focus=false)=>{setOpen(false);if(focus)trigger.current?.focus();};
@@ -15,9 +15,10 @@ export function Dropdown({label,value,options,onChange,children,triggerClassName
       setPosition({left:Math.max(8,Math.min(rect.left,innerWidth-actualWidth-8)),top:below<height&&above>below?Math.max(8,rect.top-height-4):Math.min(rect.bottom+4,innerHeight-height-8)});
     };
     place();
+    const observer=new ResizeObserver(place);observer.observe(panel.current);
     (panel.current.querySelector('[aria-selected="true"]:not(:disabled)')||items()[0])?.focus({preventScroll:true});
     window.addEventListener('resize',place);
-    return()=>window.removeEventListener('resize',place);
+    return()=>{observer.disconnect();window.removeEventListener('resize',place);};
   },[open,width,maxHeight]);
   useEffect(()=>{
     if(!open)return;
@@ -38,14 +39,15 @@ export function Dropdown({label,value,options,onChange,children,triggerClassName
     }
   };
   return <>
-    <button ref={trigger} data-shortcut={shortcut} className={`dropdown-trigger ${triggerClassName}`} role={menu?undefined:'combobox'} aria-label={label} title={label} aria-haspopup={menu?'menu':'listbox'} aria-controls={open?id:undefined} aria-expanded={open} data-value={value}
+    <button ref={trigger} data-shortcut={shortcut} className={`dropdown-trigger ${triggerClassName}`} role={menu||renderPanel?undefined:'combobox'} aria-label={label} title={label} aria-haspopup={renderPanel?'dialog':menu?'menu':'listbox'} aria-controls={open?id:undefined} aria-expanded={open} data-value={value}
       onClick={()=>{if(!open)onOpen?.();setOpen(v=>!v);}} onKeyDown={e=>{if(['ArrowDown','ArrowUp','Enter',' '].includes(e.key)){e.preventDefault();e.stopPropagation();if(!open)onOpen?.();setOpen(true);}if(e.key==='Escape'&&open){e.preventDefault();e.stopPropagation();close(true);}}}>
       {children}{showArrow&&<ChevronDown className="dropdown-arrow" size={12}/>}
     </button>
-    {open&&createPortal(<div ref={panel} id={id} className="dropdown-panel" style={{...position,width:`min(${width}px, calc(100vw - 16px))`,maxHeight:`min(${maxHeight}px, calc(100dvh - 16px))`}} role={menu?'menu':'listbox'} aria-label={label} onKeyDown={keys} onKeyUp={e=>e.stopPropagation()}>
+    {open&&createPortal(<div ref={panel} id={id} className="dropdown-panel" style={{...position,width:`min(${width}px, calc(100vw - 16px))`,maxHeight:`min(${maxHeight}px, calc(100dvh - 16px))`}} role={renderPanel?'dialog':menu?'menu':'listbox'} aria-multiselectable={multiple||undefined} aria-label={label} onKeyDown={keys} onKeyUp={e=>e.stopPropagation()}>
       {panelHeader}
-      {options.map(option=><button key={option.value} role={menu?'menuitem':'option'} aria-selected={menu?undefined:value===option.value} disabled={option.disabled} onClick={()=>{close(true);if(menu)option.onSelect?.();else onChange(option.value);}}>
-        {option.icon}<span>{option.label}</span>{!menu&&value===option.value&&<Check size={15}/>}
+      {renderPanel?.({close:()=>close(true)})}
+      {options.map(option=><button key={option.value} role={menu?'menuitem':'option'} aria-selected={menu?undefined:multiple?value.includes(option.value):value===option.value} disabled={option.disabled} onClick={()=>{if(!multiple)close(true);if(menu)option.onSelect?.();else onChange(option.value);}}>
+        {option.icon}<span>{option.label}</span>{!menu&&(multiple?value.includes(option.value):value===option.value)&&<Check size={15}/>}
       </button>)}
     </div>,document.body)}
   </>;

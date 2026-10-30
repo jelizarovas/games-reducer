@@ -1,5 +1,5 @@
 import {Dropdown} from './Dropdown';
-import {languageNames} from './languages';
+import {languageLabel,toggleLanguage} from './languages';
 export function LanguageFilter({value,onChange,options,sidebar=false}){
-  return <Dropdown label={sidebar?'Game language':'Library language'} value={value} onChange={onChange} options={options} width={250} triggerClassName={sidebar?`category-filter ${value!=='all'?'active':''}`:''} panelHeader={<p className="language-filter-note">Language tags take priority. Includes estimates from ROM regions.</p>}><span>{value==='all'?'All languages':value==='unknown'?'Unknown':languageNames[value]}</span></Dropdown>;
+  return <Dropdown multiple label={sidebar?'Game language':'Library language'} value={value} onChange={choice=>onChange(toggleLanguage(value,choice))} options={options} width={280} triggerClassName={sidebar?`category-filter ${!value.includes('all')?'active':''}`:''} panelHeader={<p className="language-filter-note">Select any languages. Includes estimates from ROM regions.</p>}><span>{languageLabel(value)}</span></Dropdown>;
 }

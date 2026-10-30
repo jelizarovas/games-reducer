@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {gameLanguages,matchesLanguage,languageOptions} from '../src/languages.js';
+import {gameLanguages,matchesLanguage,languageOptions,readLanguages,toggleLanguage,languageLabel} from '../src/languages.js';
 import {safeMetadata,validateBackup} from '../src/browser-core.js';
 const game=(name,metadata={})=>({relative_path:`nes/${name}.nes`,metadata});
 test('region-based English estimates include US, Europe, world and combined releases',()=>{
@@ -26,4 +26,11 @@ test('filters span systems and keep explicit language metadata in backups',()=>{
   assert.deepEqual(languageOptions(games).map(o=>o.value),['all','en','ja','unknown']);
   const metadata=safeMetadata({languages:['en','ja'],language:'en',unexpected:'ignored'});assert.deepEqual(metadata,{languages:'en,ja',language:'en'});
   const restored=validateBackup({format:'games-reducer-backup',version:1,games:[{...games[0],size:100,status:'keep',seconds:0,metadata}]});assert.equal(restored.games[0].metadata.languages,'en,ja');
+});
+
+test('multi-language selections match any chosen language and migrate old preferences',()=>{
+  assert.deepEqual(readLanguages(null),['all']);assert.deepEqual(readLanguages('en'),['en']);assert.deepEqual(readLanguages('unknown'),['unknown']);assert.deepEqual(readLanguages('["en","unknown"]'),['en','unknown']);
+  const selected=toggleLanguage(toggleLanguage(['all'],'en'),'unknown');assert.deepEqual(selected,['en','unknown']);assert.equal(languageLabel(selected),'English + Unknown');
+  assert.equal(matchesLanguage(game('One (U)'),selected),true);assert.equal(matchesLanguage(game('Two'),selected),true);assert.equal(matchesLanguage(game('Three (J)'),selected),false);assert.equal(matchesLanguage(game('Four (Japan) (En,Ja)'),selected),true);
+  assert.deepEqual(toggleLanguage(selected,'en'),['unknown']);assert.deepEqual(toggleLanguage(selected,'all'),['all']);assert.equal(matchesLanguage(game('One (U)'),[]),false);assert.deepEqual(readLanguages('[]'),[]);
 });

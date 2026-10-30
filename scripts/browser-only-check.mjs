@@ -34,6 +34,19 @@ let page=await context.newPage();const errors=[];
 const watch=p=>{p.on('console',m=>{if(m.type()==='error')console.log('Browser console:',m.text().slice(0,5000));});p.on('requestfailed',r=>console.log('Failed request:',r.url(),r.failure()?.errorText));p.on('request',r=>{if(new URL(r.url()).pathname.includes('/api/'))apiCalls.push(r.url());});p.on('pageerror',e=>{if(!e.message.includes('Using exceptions for control flow'))errors.push(e.message);});};watch(page);
 const openSettings=async()=>{await page.getByRole('button',{name:'More actions',exact:true}).click();await page.getByRole('menuitem',{name:'Library settings',exact:true}).click();};
 const closeDialog=()=>page.getByRole('button',{name:'Close dialog',exact:true}).click();
+const filterChoice=async(section,choice,library=false)=>{
+  await page.getByRole('button',{name:library?'Library filters':'Filters',exact:true}).click();
+  const heading=page.locator('.filter-section-trigger').filter({hasText:new RegExp('^'+section)});
+  if(await heading.getAttribute('aria-expanded')!=='true')await heading.click();
+  await page.getByRole(section==='Languages'?'checkbox':'radio',{name:choice,exact:true}).click();await page.keyboard.press('Escape');
+};
+const setLanguages=async values=>{
+  await page.getByRole('button',{name:'Filters',exact:true}).click();
+  const heading=page.locator('.filter-section-trigger').filter({hasText:/^Languages/});if(await heading.getAttribute('aria-expanded')!=='true')await heading.click();
+  await page.getByRole('checkbox',{name:'All languages',exact:true}).click();
+  for(const value of values)await page.getByRole('checkbox',{name:value,exact:true}).click();
+  await page.keyboard.press('Escape');
+};
 const playing=()=>page.locator('.screen[data-phase=playing]').waitFor({timeout:45000});
 const store=()=>page.evaluate(()=>new Promise((resolve,reject)=>{const r=indexedDB.open('games-reducer:/games-reducer/');r.onsuccess=()=>{const db=r.result,q=db.transaction('library').objectStore('library').get('state');q.onsuccess=()=>{const s=q.result;db.close();resolve({games:s.games.map(({handle,...g})=>g),pending:s.pending,history:s.history,current:s.current});};q.onerror=()=>reject(q.error);};r.onerror=()=>reject(r.error);}));
 try{
@@ -90,14 +103,14 @@ try{
     if(system!=='nes'){const engine=page.frames().find(f=>f.url().includes('/play.html'));assert.ok(engine.url().includes('/engine-'),'Emulator URLs are content-versioned');assert.equal(await engine.evaluate(()=>crossOriginIsolated),true);}
     if(system!=='nes')await page.frames().find(f=>f.url().includes('/play.html')).waitForFunction(()=>window.reducerRuntimeState().renderedFrames>250,{},{timeout:30000});await page.waitForTimeout(300);await page.screenshot({path:path.join(run,`${system}.png`)});
     await page.getByRole('button',{name:'Mute sound',exact:true}).click();await playing();await page.getByRole('button',{name:'Unmute sound',exact:true}).click();
-    await page.getByRole('combobox',{name:'Game category',exact:true}).click();await page.getByRole('option',{name:'Uncategorized',exact:true}).click();await playing();assert.equal(await page.locator('.game-row').count(),0);
-    await page.getByRole('combobox',{name:'Game category',exact:true}).click();await page.getByRole('option',{name:'All categories',exact:true}).click();
+    await filterChoice('Category','Uncategorized');await playing();assert.equal(await page.locator('.game-row').count(),0);
+    await filterChoice('Category','All categories');
     await page.getByRole('button',{name:'Review game',exact:true}).click();await page.getByRole('button',{name:'Resume game',exact:true}).click();await playing();
     const speed=()=>system==='nes'?page.locator('.nes-canvas').getAttribute('data-speed').then(Number):page.frames().find(f=>f.url().includes('/play.html')).evaluate(()=>window.reducerRuntimeState().speed);
     const fast=await page.getByRole('button',{name:'Hold to fast-forward',exact:true}).boundingBox();await page.mouse.move(fast.x+15,fast.y+15);await page.mouse.down();await page.waitForTimeout(180);assert.equal(await speed(),3);await page.mouse.move(10,100);await page.mouse.up();await page.waitForTimeout(180);assert.equal(await speed(),1);
     if(system==='megadrive'){
       const engine=page.frames().find(f=>f.url().includes('/play.html'));await engine.evaluate(()=>window.routeSentinel='preserved');
-      assert.equal(await page.getByRole('combobox',{name:'Sort games',exact:true}).locator('.dropdown-arrow').count(),0);assert.equal(await page.getByRole('combobox',{name:'Review status',exact:true}).locator('.dropdown-arrow').count(),0);
+      assert.equal(await page.getByRole('combobox',{name:'Sort games',exact:true}).locator('.dropdown-arrow').count(),0);assert.equal(await page.getByRole('button',{name:'Filters',exact:true}).locator('.dropdown-arrow').count(),0);
       const sidebar=page.getByRole('complementary',{name:'Game library'}),resize=page.getByRole('separator',{name:'Resize game library'});
       const before=await sidebar.boundingBox(),handle=await resize.boundingBox();await page.mouse.move(handle.x+4,handle.y+80);await page.mouse.down();await page.mouse.move(handle.x+144,handle.y+80);await page.mouse.up();assert.ok((await sidebar.boundingBox()).width>before.width+100);await playing();
       await page.getByRole('button',{name:'Show grid view',exact:true}).click();assert.equal(await page.locator('.virtual-list').evaluate(el=>getComputedStyle(el).display),'grid');await page.screenshot({path:path.join(run,'sidebar-grid.png')});
@@ -121,7 +134,7 @@ try{
     workerRevision++;await page.evaluate(async()=>{const registration=await navigator.serviceWorker.getRegistration();await registration.update();});
     await page.waitForFunction(async()=>!!(await navigator.serviceWorker.getRegistration()).waiting,{},{timeout:60000});
     assert.equal(await engine.evaluate(()=>window.updateSentinel),'running');await playing();
-    await openSettings();await page.getByRole('button',{name:'Update & reload',exact:true}).click();await page.waitForLoadState('domcontentloaded');await page.locator('.game-row').first().waitFor();
+    await openSettings();await Promise.all([page.waitForEvent('domcontentloaded'),page.getByRole('button',{name:'Update & reload',exact:true}).click()]);await page.locator('.game-row').first().waitFor();
     await page.waitForFunction(()=>!document.querySelector('iframe[title^="Playing"]'));assert.equal((await store()).games.length,3);
     await openSettings();await page.getByRole('status').filter({hasText:'App and emulators ready offline.'}).waitFor();await page.getByRole('button',{name:'All covers saved',exact:true}).waitFor();await closeDialog();
     console.log('PASS update waits during play; user applies after saves flush; cover cache and library survive');
@@ -133,7 +146,7 @@ try{
   await openSettings();const downloadEvent=page.waitForEvent('download');await page.getByRole('button',{name:'Export backup',exact:true}).click();const download=await downloadEvent;const backupPath=path.join(run,'progress.json');await download.saveAs(backupPath);const backup=JSON.parse(fs.readFileSync(backupPath,'utf8'));
   assert.equal(backup.version,2);assert.equal(backup.saves.length,3);assert.equal(backup.saves.find(s=>s.key.endsWith('Legacy.sfc')).files.sav,'CQgH');assert.equal(backup.games.find(g=>g.system==='nes').status,'keep');assert.ok(!JSON.stringify(backup).includes('handle'));await closeDialog();
   await page.goto(url+'games/');await page.getByRole('region',{name:'Games library',exact:true}).waitFor();
-  await page.getByRole('combobox',{name:'Library review status',exact:true}).click();await page.getByRole('option',{name:'All games',exact:true}).click();assert.equal(await page.locator('.catalog-card').count(),3);
+  await filterChoice('Review status','All games',true);assert.equal(await page.locator('.catalog-card').count(),3);
   await page.getByRole('textbox',{name:'Search library'}).fill('Sonic');assert.equal(await page.locator('.catalog-card').count(),1);await page.getByRole('textbox',{name:'Search library'}).fill('');
   await page.screenshot({path:path.join(run,'games-grid.png')});await page.getByRole('button',{name:'List view',exact:true}).click();await page.screenshot({path:path.join(run,'games-list.png')});
   await page.getByRole('button',{name:'More actions',exact:true}).click();assert.equal(await page.getByRole('progressbar',{name:'Collection reviewed'}).getAttribute('aria-valuenow'),'33');await page.screenshot({path:path.join(run,'progress-menu.png')});await page.keyboard.press('Escape');
@@ -213,18 +226,27 @@ try{
   assert.equal((await store()).games.find(g=>g.title==='Golf Ko Open').status,'keep');
   console.log('PASS compatibility scan/report, queue exclusion, disabled launch and existing-library upgrade without changing decisions');
   // Language filters must apply to the list, /games and next-game decisions.
-  await page.evaluate(async encoded=>{const root=await navigator.storage.getDirectory(),roms=await root.getDirectoryHandle('roms'),dir=await roms.getDirectoryHandle('nes');for(const name of ['Golf L English (U).nes','Golf M Japanese (J).nes','Golf N English (U).nes']){const file=await dir.getFileHandle(name,{create:true}),writer=await file.createWritable();await writer.write(Uint8Array.from(atob(encoded),c=>c.charCodeAt(0)));await writer.close();}},fixtures.find(f=>f.system==='nes').bytes);
+  await page.evaluate(async encoded=>{const root=await navigator.storage.getDirectory(),roms=await root.getDirectoryHandle('roms'),dir=await roms.getDirectoryHandle('nes');for(const name of ['Golf L English (U).nes','Golf M Japanese (J).nes','Golf N English (U).nes','Golf O Unknown.nes']){const file=await dir.getFileHandle(name,{create:true}),writer=await file.createWritable();await writer.write(Uint8Array.from(atob(encoded),c=>c.charCodeAt(0)));await writer.close();}},fixtures.find(f=>f.system==='nes').bytes);
   await openSettings();await page.getByRole('button',{name:'Reconnect / rescan',exact:true}).click();
   await page.getByRole('button',{name:'Golf L English',exact:true}).click();await playing();const activeCanvas=await page.locator('.nes-canvas canvas').elementHandle();
-  await page.getByRole('combobox',{name:'Game language',exact:true}).click();await page.getByRole('option',{name:'Japanese',exact:true}).click();await playing();assert.equal(await page.getByRole('button',{name:'Golf L English',exact:true}).count(),0);await page.getByRole('button',{name:'Golf M Japanese',exact:true}).waitFor();assert.equal(await activeCanvas.evaluate(el=>el.isConnected),true);
-  await page.getByRole('combobox',{name:'Game language',exact:true}).click();await page.getByRole('option',{name:'English',exact:true}).click();assert.equal(await page.getByRole('button',{name:'Golf M Japanese',exact:true}).count(),0);
+  await setLanguages(['Japanese']);await playing();assert.equal(await page.getByRole('button',{name:'Golf L English',exact:true}).count(),0);await page.getByRole('button',{name:'Golf M Japanese',exact:true}).waitFor();assert.equal(await activeCanvas.evaluate(el=>el.isConnected),true);
+  await setLanguages(['English','Unknown']);await page.getByRole('button',{name:'Golf O Unknown',exact:true}).waitFor();assert.equal(await page.getByRole('button',{name:'Golf M Japanese',exact:true}).count(),0);
   await page.keyboard.press('Alt+Digit1');await page.getByRole('heading',{name:'Golf N English',exact:true}).waitFor();await playing();
   const languageQueue=await store();assert.equal(languageQueue.games.find(g=>g.id===languageQueue.current).title,'Golf N English');await page.getByRole('button',{name:'Stop game',exact:true}).click();
-  await page.getByRole('button',{name:'More actions',exact:true}).click();await page.getByRole('menuitem',{name:'Games library',exact:true}).click();await page.getByRole('combobox',{name:'Library language',exact:true}).click();await page.getByRole('option',{name:'Japanese',exact:true}).click();await page.getByRole('button',{name:'Play Golf M Japanese',exact:true}).waitFor();assert.equal(await page.getByRole('button',{name:'Play Golf N English',exact:true}).count(),0);
-  await page.reload();await page.getByRole('combobox',{name:'Library language',exact:true}).waitFor();assert.match(await page.getByRole('combobox',{name:'Library language',exact:true}).innerText(),/Japanese/);
-  await page.setViewportSize({width:390,height:844});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:path.join(run,'language-mobile.png')});await page.setViewportSize({width:1440,height:900});
-  await page.getByRole('combobox',{name:'Library language',exact:true}).click();await page.getByRole('option',{name:'All languages',exact:true}).click();await page.getByRole('link',{name:'Player',exact:true}).click();
-  console.log('PASS language filters across consoles/routes, persistence, mobile layout and next-game queue; active game preserved');
+  await page.getByRole('button',{name:'More actions',exact:true}).click();await page.getByRole('menuitem',{name:'Games library',exact:true}).click();
+  await page.getByRole('button',{name:'Play Golf O Unknown',exact:true}).waitFor();await page.getByRole('button',{name:'Play Golf N English',exact:true}).waitFor();assert.equal(await page.getByRole('button',{name:'Play Golf M Japanese',exact:true}).count(),0);
+  await page.reload();await page.getByRole('combobox',{name:'Library language',exact:true}).waitFor();assert.match(await page.getByRole('combobox',{name:'Library language',exact:true}).innerText(),/English \+ Unknown/);
+  await page.getByRole('combobox',{name:'Library language',exact:true}).click();assert.equal(await page.getByRole('listbox',{name:'Library language'}).getAttribute('aria-multiselectable'),'true');await page.getByRole('option',{name:'Unknown',exact:true}).click();assert.equal(await page.getByRole('button',{name:'Play Golf O Unknown',exact:true}).count(),0);await page.getByRole('option',{name:'Unknown',exact:true}).click();await page.keyboard.press('Escape');
+  await page.setViewportSize({width:390,height:844});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:path.join(run,'language-mobile.png')});
+  await page.getByRole('button',{name:'Library filters',exact:true}).click();await page.screenshot({path:path.join(run,'filters-mobile.png')});const box=await page.getByRole('dialog',{name:'Library filters',exact:true}).boundingBox();assert.ok(box.x>=0&&box.x+box.width<=390&&box.y+box.height<=844);await page.mouse.click(180,6);assert.equal(await page.getByRole('dialog',{name:'Library filters',exact:true}).count(),0);
+  await page.setViewportSize({width:1440,height:900});await page.getByRole('link',{name:'Player',exact:true}).click();await page.getByRole('button',{name:'Filters',exact:true}).click();await page.screenshot({path:path.join(run,'filters-desktop.png')});await page.keyboard.press('Escape');
+  for(const [width,height] of [[320,568],[844,390]]){
+    await page.setViewportSize({width,height});await page.getByRole('button',{name:'Filters',exact:true}).click();await page.locator('.filter-section-trigger').filter({hasText:/^Category/}).click();await page.waitForTimeout(100);
+    const bounds=await page.getByRole('dialog',{name:'Filters',exact:true}).boundingBox();assert.ok(bounds.x>=0&&bounds.y>=0&&bounds.x+bounds.width<=width&&bounds.y+bounds.height<=height);await page.keyboard.press('Escape');
+  }
+  await page.setViewportSize({width:1440,height:900});
+  await setLanguages([]);
+  console.log('PASS multi-language filters, English plus Unknown without Japanese, persisted selection, mobile clickaway and next-game queue; active game preserved');
   // Large-library rendering uses synthetic records in this disposable profile only.
   await page.evaluate(()=>new Promise((resolve,reject)=>{const r=indexedDB.open('games-reducer:/games-reducer/');r.onsuccess=()=>{const db=r.result,tx=db.transaction('library','readwrite'),store=tx.objectStore('library'),get=store.get('state');get.onsuccess=()=>{const state=get.result,base=state.games[0];state.games=Array.from({length:5000},(_,i)=>({...base,id:i.toString(16).padStart(24,'0'),relative_path:'nes/Fixture '+i+'.nes',title:'Fixture '+String(i).padStart(4,'0'),status:'unreviewed'}));store.put(state,'state');};tx.oncomplete=()=>{db.close();resolve();};tx.onerror=()=>reject(tx.error);};}));
   await page.goto(url+'games/');await page.getByRole('region',{name:'Games library',exact:true}).waitFor();
