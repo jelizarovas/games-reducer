@@ -1,6 +1,5 @@
 import { useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
-import { Browser, Controller } from 'jsnes';
-import './nes-mappers';
+import { Browser, Controller } from './nes-mappers';
 import { engineKey,keyboardCode } from './player-input';
 import {readRom,readCartridgeSave,writeCartridgeSave,SAVE_DATABASE} from './browser-library';
 import {assetUrl} from './assets';

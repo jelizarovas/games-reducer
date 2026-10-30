@@ -2,6 +2,10 @@
 // this is the same module used by ROM.createMapper, without modifying node_modules.
 import Mappers from '../node_modules/jsnes/src/mappers/index.js';
 import Mapper0 from '../node_modules/jsnes/src/mappers/mapper0.js';
+// Share the same ESM graph in Vite dev as well as production. Importing the
+// optimized bare "jsnes" package would give dev a separate mapper registry.
+export { default as Browser } from '../node_modules/jsnes/src/browser/index.js';
+export { default as Controller } from '../node_modules/jsnes/src/controller.js';
 
 // Taito TC0190/TC0350 (iNES 33). Register decoding verified against:
 // https://github.com/SourMesen/Mesen2/blob/master/Core/NES/Mappers/Taito/TaitoTc0190.h
