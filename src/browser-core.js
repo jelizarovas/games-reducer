@@ -18,9 +18,10 @@ export function safePath(value) {
 export const identity = game => `${game.system}|${safePath(game.relative_path).toLowerCase()}|${game.size}`;
 export function safeMetadata(value={}) {
   const result={};
-  for(const key of ['name','description','genre','players','released','publisher','source','yearSource','genreSource','coverSource']) {
+  for(const key of ['name','description','genre','players','released','publisher','source','yearSource','genreSource','coverSource','language','languages']) {
     if(typeof value[key]==='string')result[key]=value[key].slice(0,key==='description'?12000:400);
   }
+  if(Array.isArray(value.languages))result.languages=value.languages.filter(v=>typeof v==='string').slice(0,20).join(',').slice(0,400);
   if(typeof value.cover==='string'&&/^catalog\/covers\/[a-f0-9]+\.webp$/.test(value.cover))result.cover=value.cover;
   return result;
 }

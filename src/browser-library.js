@@ -89,7 +89,7 @@ async function folderMetadata(handle,system){
       const text=key=>entry.querySelector(key)?.textContent?.trim()||'';
       try{
         const relative=safePath(text('path').replace(/^\.\//,''));
-        map.set(`${system}/${relative}`.toLowerCase(),safeMetadata({name:text('name'),description:text('desc'),genre:text('genre'),released:text('releasedate'),publisher:text('publisher'),players:text('players'),source:'Local gamelist'}));
+        map.set(`${system}/${relative}`.toLowerCase(),safeMetadata({name:text('name'),description:text('desc'),genre:text('genre'),languages:text('lang')||text('language')||text('languages'),released:text('releasedate'),publisher:text('publisher'),players:text('players'),source:'Local gamelist'}));
       }catch{/* Ignore paths outside the chosen directory. */}
     }
   }catch(error){if(error.name!=='NotFoundError')throw error;}

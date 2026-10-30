@@ -3,6 +3,8 @@ import { createRoot } from 'react-dom/client';
 import { Gamepad2, Search, Play, Check, Trash2, SkipForward, RotateCcw, FolderOpen, X, Download, Pause, Maximize, LoaderCircle, ChevronRight, Settings2, Info, Square, Menu, LogOut, ChevronDown, ArrowDownUp, ListFilter, Volume2, VolumeX, Move } from 'lucide-react';
 import { api } from './api';
 import {canQueue,isBlocked} from './nes-compatibility';
+import {matchesLanguage,languageOptions,languageDetails,languageNames} from './languages';
+import {LanguageFilter} from './LanguageFilter';
 import {pickRomFolder} from './browser-library';
 import {thumbnail} from './assets';
 import {BrowserSettings} from './BrowserSettings';
@@ -50,6 +52,9 @@ function App() {
   const [fastForward, setFastForward] = useState(false);
   const [sort, setSort] = useState('title');
   const [category, setCategory] = useState('all');
+  const [language,setLanguage]=useState(()=>{const saved=localStorage.getItem('games-reducer-language');return saved==='unknown'||Object.hasOwn(languageNames,saved)?saved:'all';});
+  useEffect(()=>{localStorage.setItem('games-reducer-language',language);},[language]);
+  const languages=useMemo(()=>languageOptions(games),[games]);
   const categoryOptions = useMemo(() => [{value:'all',label:'All categories'}, ...[...new Set(games.flatMap(g => gameCategories(g.metadata)))].sort((a,b)=>a.localeCompare(b)).map(value=>({value,label:value})), {value:'uncategorized',label:'Uncategorized'}], [games]);
   const [muted, setMuted] = useState(() => localStorage.getItem('games-reducer-muted') === 'true');
   const [touchPanels, setTouchPanels] = useState({p1:false,p2:false});
@@ -60,8 +65,8 @@ function App() {
   const metadataAttempts = useRef(new Set());
   const mode = useRef('ready'), framePhase = useRef(phase); framePhase.current = phase;
   const current = games.find(g => g.id === selected);
-  const visible = useMemo(() => sortGames(games.filter(g => matchesConsole(g, system) && matchesCategory(g, category) && (filter === 'all' || g.status === filter) &&
-    g.title.toLowerCase().includes(query.toLowerCase())), sort), [games, system, category, filter, query, sort]);
+  const visible = useMemo(() => sortGames(games.filter(g => matchesConsole(g, system) && matchesCategory(g, category) && matchesLanguage(g, language) && (filter === 'all' || g.status === filter) &&
+    g.title.toLowerCase().includes(query.toLowerCase())), sort), [games, system, category, language, filter, query, sort]);
 
   async function refresh() {
     const [info, all] = await Promise.all([api('/state'), api('/games')]);
@@ -74,7 +79,7 @@ function App() {
         let { info, all } = await refresh();
         if (cancelled) return;
         setSystem('all');
-        setSelected(all.find(g => g.id === info.currentId && canQueue(g))?.id || all.find(g => g.status === 'unreviewed' && canQueue(g))?.id);
+        setSelected(all.find(g => g.id === info.currentId && canQueue(g) && matchesLanguage(g,language))?.id || all.find(g => g.status === 'unreviewed' && canQueue(g) && matchesLanguage(g,language))?.id);
       } catch (e) { if (!cancelled) { setError(e.message); setModal('settings'); } }
     })();
     return () => { cancelled = true; };
@@ -134,7 +139,7 @@ function App() {
       await api(`/games/${id}/decision`, { status });
       const { all } = await refresh();
       const ordered = sortGames(all, sort);
-      const candidates = ordered.filter(g => matchesConsole(g, system) && matchesCategory(g, category) && g.status === 'unreviewed' && canQueue(g) && g.id !== id && g.title.toLowerCase().includes(query.toLowerCase()));
+      const candidates = ordered.filter(g => matchesConsole(g, system) && matchesCategory(g, category) && matchesLanguage(g, language) && g.status === 'unreviewed' && canQueue(g) && g.id !== id && g.title.toLowerCase().includes(query.toLowerCase()));
       const previousIndex = ordered.findIndex(g => g.id === id);
       const next = candidates.find(g => ordered.indexOf(g) > previousIndex) || candidates[0];
       setNotice(`${current.title} ${status === 'discard' ? 'marked for cleanup' : status === 'keep' ? 'kept' : 'saved for later'}.`);
@@ -168,7 +173,7 @@ function App() {
     try {
       await stopPlayer();
       const result = await api('/scan', { handle: chosen });
-      const { all } = await refresh(); setSelected(all.find(g => matchesConsole(g, system) && canQueue(g))?.id);
+      const { all } = await refresh(); setSelected(all.find(g => matchesConsole(g, system) && canQueue(g) && matchesLanguage(g,language))?.id);
       setNotice(`Scanned ${result.count.toLocaleString()} games.${result.warnings.length ? ` ${result.warnings.length} files need attention: ${result.warnings.slice(0, 2).join('; ')}` : ''}`);
       setModal(null);
     } catch (e) { setError(e.message); }
@@ -213,13 +218,13 @@ function App() {
   function chooseSystem(next) {
     setSystem(next); setQuery(''); setFilter('unreviewed');
     if (playing) return;
-    const game = games.find(g => matchesConsole(g, next) && matchesCategory(g, category) && g.status === 'unreviewed' && canQueue(g));
+    const game = games.find(g => matchesConsole(g, next) && matchesCategory(g, category) && matchesLanguage(g, language) && g.status === 'unreviewed' && canQueue(g));
     setSelected(game?.id); api('/current', { filter: next, id: game?.id }).catch(e => setError(e.message));
   }
   function chooseFilter(next) {
     setFilter(next);
     if (playing) return;
-    const matches = games.filter(g => matchesConsole(g, system) && matchesCategory(g, category) && (next === 'all' || g.status === next) && g.title.toLowerCase().includes(query.toLowerCase()));
+    const matches = games.filter(g => matchesConsole(g, system) && matchesCategory(g, category) && matchesLanguage(g, language) && (next === 'all' || g.status === next) && g.title.toLowerCase().includes(query.toLowerCase()));
     if (!matches.some(g => g.id === selected)) {
       setSelected(matches[0]?.id);
       if (matches[0]) api('/current', { id: matches[0].id, filter: system }).catch(e => setError(e.message));
@@ -228,10 +233,19 @@ function App() {
   function chooseCategory(next) {
     setCategory(next);
     if (playing) return;
-    const matches = sortGames(games.filter(g => matchesConsole(g, system) && matchesCategory(g, next) && (filter === 'all' || g.status === filter) && canQueue(g) && g.title.toLowerCase().includes(query.toLowerCase())), sort);
+    const matches = sortGames(games.filter(g => matchesConsole(g, system) && matchesCategory(g, next) && matchesLanguage(g, language) && (filter === 'all' || g.status === filter) && canQueue(g) && g.title.toLowerCase().includes(query.toLowerCase())), sort);
     if (!matches.some(g => g.id === selected)) {
       setSelected(matches[0]?.id);
       if (matches[0]) api('/current', {id:matches[0].id,filter:system}).catch(e=>setError(e.message));
+    }
+  }
+  function chooseLanguage(next){
+    setLanguage(next);
+    if(playing)return;
+    const matches=sortGames(games.filter(g=>matchesConsole(g,system)&&matchesCategory(g,category)&&matchesLanguage(g,next)&&(filter==='all'||g.status===filter)&&canQueue(g)&&g.title.toLowerCase().includes(query.toLowerCase())),sort);
+    if(!matches.some(g=>g.id===selected)){
+      setSelected(matches[0]?.id);
+      if(matches[0])api('/current',{id:matches[0].id,filter:system}).catch(e=>setError(e.message));
     }
   }
   function moveSelection(delta) {
@@ -269,7 +283,7 @@ function App() {
   }, []);
   function resume() { setPhase('playing'); framePhase.current = 'playing'; }
   mode.current = busy ? 'busy' : modal || route!=='player' ? 'modal' : phase;
-  actions.current = { review, play: () => playGame(), keep: () => decide('keep'), discard: () => decide('discard'), skip: () => decide('skip'), resume, undo, finish,
+  actions.current = { shortcut:appShortcut, review, play: () => playGame(), keep: () => decide('keep'), discard: () => decide('discard'), skip: () => decide('skip'), resume, undo, finish,
     next: () => moveSelection(1), previous: () => moveSelection(-1),
     pageNext: () => moveSelection(20), pagePrevious: () => moveSelection(-20),
     menu: () => setModal('controller'), fullscreen: toggleFullscreen,
@@ -317,7 +331,7 @@ function App() {
     const hints=e=>{
       if(e.code==='AltLeft'||e.code==='AltRight'){e.preventDefault();e.stopPropagation();setShortcutHints(e.type==='keydown');return;}
       if(e.type!=='keydown')return;
-      if(e.altKey&&!e.ctrlKey&&!e.metaKey){e.preventDefault();e.stopPropagation();if(!e.repeat)appShortcut(e.code);return;}
+      if(e.altKey&&!e.ctrlKey&&!e.metaKey){e.preventDefault();e.stopPropagation();if(!e.repeat)actions.current.shortcut(e.code);return;}
       if(!['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName)&&(e.key==='?'||(e.code==='Slash'&&e.shiftKey))){e.preventDefault();e.stopPropagation();if(!e.repeat)toggleShortcuts();}
     };
     const keydown = e => {
@@ -399,7 +413,7 @@ function App() {
         <SessionMenu onShortcuts={toggleShortcuts} games={games} saveCount={state?.saveCount} onRefresh={()=>refresh().catch(e=>setError(e.message))} onNavigate={navigate} onFinish={finish} onUndo={undo} onController={()=>openPanel('controller')} onSettings={()=>openPanel('settings')} busy={busy}/>
       </div>
     </header>
-    {route==='games'&&<GamesPage games={visible} query={query} onQuery={setQuery} filter={filter} onFilter={chooseFilter} category={category} onCategory={chooseCategory} categories={categoryOptions} sort={sort} onSort={setSort} onPlay={playGame} busy={busy} onSettings={()=>openPanel('settings')}/>}
+    {route==='games'&&<GamesPage games={visible} query={query} onQuery={setQuery} filter={filter} onFilter={chooseFilter} category={category} onCategory={chooseCategory} categories={categoryOptions} language={language} onLanguage={chooseLanguage} languages={languages} sort={sort} onSort={setSort} onPlay={playGame} busy={busy} onSettings={()=>openPanel('settings')}/>}
     {route!=='player'&&error&&!modal&&<div className="alert error" role="alert">{error}<button aria-label="Dismiss error" onClick={()=>setError('')}><X size={16}/></button></div>}
     <div className={`workspace ${sidebarHidden?'sidebar-hidden':''}`} hidden={route!=='player'}>
       <aside id="game-library" className="sidebar" aria-label="Game library" hidden={sidebarHidden}>
@@ -409,9 +423,9 @@ function App() {
             <Dropdown showArrow={false} label="Review status" value={filter} onChange={chooseFilter} triggerClassName="search-dropdown" options={Object.entries({...labels,all:'All games'}).map(([value,label])=>({value,label}))}><ListFilter size={18}/></Dropdown>
             <button data-shortcut="Alt+V" className="icon-button sidebar-view-toggle" aria-label={sidebarView==='list'?'Show grid view':'Show list view'} title={sidebarView==='list'?'Grid view':'List view'} onClick={()=>setSidebarView(value=>value==='list'?'grid':'list')}>{sidebarView==='list'?<LayoutGrid size={17}/>:<List size={17}/>}</button>
           </div></div>
-          <Dropdown label="Game category" value={category} onChange={chooseCategory} triggerClassName={`category-filter ${category !== 'all' ? 'active' : ''}`} options={categoryOptions} width={256}><span>{categoryOptions.find(option=>option.value===category)?.label}</span></Dropdown>
+          <div className="library-filters"><Dropdown label="Game category" value={category} onChange={chooseCategory} triggerClassName={`category-filter ${category !== 'all' ? 'active' : ''}`} options={categoryOptions} width={256}><span>{categoryOptions.find(option=>option.value===category)?.label}</span></Dropdown><LanguageFilter sidebar value={language} onChange={chooseLanguage} options={languages}/></div>
         </div>
-        <GameList view={sidebarView} games={visible} selected={selected} onPlay={playGame} busy={busy} loading={phase==='loading'} resetKey={JSON.stringify([system,category,filter,query,sort])}/>
+        <GameList view={sidebarView} games={visible} selected={selected} onPlay={playGame} busy={busy} loading={phase==='loading'} resetKey={JSON.stringify([system,category,language,filter,query,sort])}/>
         <SidebarResize width={sidebarWidth} height={dockHeight} onWidth={setSidebarWidth} onHeight={setDockHeight}/>
       </aside>
       <main>
@@ -434,7 +448,7 @@ function App() {
     {modal && <div className="modal-backdrop" onPointerDown={e => { if(e.target===e.currentTarget && !busy)setModal(null); }}><div className={`modal ${modal === 'shortcuts'?'shortcuts-modal':modal === 'cleanup' ? 'wide' : ''}`} role="dialog" aria-modal="true" aria-label={modal === 'shortcuts' ? 'Keyboard shortcuts' : modal === 'cleanup' ? 'Finish session' : modal === 'controller' ? 'Controller menu' : modal === 'info' ? 'Game information' : 'Library settings'} ref={dialog}>
       <div className="modal-heading"><div><h2>{modal === 'shortcuts' ? 'Keyboard shortcuts' : modal === 'cleanup' ? 'Review before cleanup.' : modal === 'controller' ? 'Controller menu' : modal === 'info' ? 'Game information' : 'Library settings'}</h2></div><button className="icon-button" aria-label="Close dialog" disabled={busy} onClick={() => setModal(null)}><X/></button></div>
       {error && <div className="alert error" role="alert">{error}<button aria-label="Dismiss error" onClick={() => setError('')}><X size={16}/></button></div>}
-      {modal === 'shortcuts' ? <KeyboardShortcuts system={playing?.system||current?.system||'nes'}/> : modal === 'info' ? <div className="game-info"><img src={thumbnail(current)} alt={`${current?.title} cover`}/><div><h3>{current?.title}</h3><p>{shortSystems[current?.system]} · {size(current?.size || 0)}</p>{current?.metadata.description && <p>{current.metadata.description}</p>}<button disabled={!current || mediaBusy || !state?.metadataConfigured} onClick={scrape}><Download size={16}/> Fetch info</button></div></div> : modal === 'controller' ? <ControllerMenu system={system} filter={filter} onSystem={chooseSystem} onFilter={chooseFilter} onFullscreen={toggleFullscreen} onSettings={() => setModal('settings')} onFetch={scrape} canFetch={!!current && !mediaBusy && !!state?.metadataConfigured} onUndo={undo} onFinish={finish} onClose={() => setModal(null)}/> : modal === 'settings' ? <><BrowserSettings state={state} busy={busy} onScan={scan} onStop={stopPlayer} onRefresh={refresh} onError={setError} onFlush={()=>{if(framePhase.current==='loading')throw new Error('Wait for the game to finish loading before exporting.');return player.current?.flushSaves?.();}}/><div className="settings-section"><h3>Controls</h3><p>Browse: D-pad / left stick selects · A plays · LB/RB console · Left/Right filter · LT/RT jumps 20 · X menu · Y undo · Start finish session.</p><p>L3 toggles fullscreen view from any screen. F requests browser fullscreen. In game: hold RT/R2 or Tab for 3× fast forward, release for normal speed. Back + Start opens review. A keeps, B marks, X skips, Y resumes. Release buttons before choosing.</p><p className="help">Keyboard: arrows move; Genesis Z/X/C, A/S/D; SNES Z/X/A/S, D/C shoulders, Right Shift select; NES X/Z, Right Ctrl select. Enter starts games; Esc opens review.</p></div><div className="settings-section"><h3>Missing files</h3><p className="help">After you move games outside this app, scan again. Clear only the records whose files are still missing.</p><button disabled={busy || !games.some(g => g.missing)} onClick={async () => { try { await stopPlayer(); const result = await api('/missing/clear', {}); await refresh(); setNotice(`Cleared ${result.count} missing records.`); } catch (e) { setError(e.message); } }}>Clear missing records</button></div></>
+      {modal === 'shortcuts' ? <KeyboardShortcuts system={playing?.system||current?.system||'nes'}/> : modal === 'info' ? <div className="game-info"><img src={thumbnail(current)} alt={`${current?.title} cover`}/><div><h3>{current?.title}</h3><p>{shortSystems[current?.system]} · {size(current?.size || 0)}</p><p>Language: {languageDetails(current||{})}</p>{current?.metadata.description && <p>{current.metadata.description}</p>}<button disabled={!current || mediaBusy || !state?.metadataConfigured} onClick={scrape}><Download size={16}/> Fetch info</button></div></div> : modal === 'controller' ? <ControllerMenu system={system} filter={filter} onSystem={chooseSystem} onFilter={chooseFilter} onFullscreen={toggleFullscreen} onSettings={() => setModal('settings')} onFetch={scrape} canFetch={!!current && !mediaBusy && !!state?.metadataConfigured} onUndo={undo} onFinish={finish} onClose={() => setModal(null)}/> : modal === 'settings' ? <><BrowserSettings state={state} busy={busy} onScan={scan} onStop={stopPlayer} onRefresh={refresh} onError={setError} onFlush={()=>{if(framePhase.current==='loading')throw new Error('Wait for the game to finish loading before exporting.');return player.current?.flushSaves?.();}}/><div className="settings-section"><h3>Controls</h3><p>Browse: D-pad / left stick selects · A plays · LB/RB console · Left/Right filter · LT/RT jumps 20 · X menu · Y undo · Start finish session.</p><p>L3 toggles fullscreen view from any screen. F requests browser fullscreen. In game: hold RT/R2 or Tab for 3× fast forward, release for normal speed. Back + Start opens review. A keeps, B marks, X skips, Y resumes. Release buttons before choosing.</p><p className="help">Keyboard: arrows move; Genesis Z/X/C, A/S/D; SNES Z/X/A/S, D/C shoulders, Right Shift select; NES X/Z, Right Ctrl select. Enter starts games; Esc opens review.</p></div><div className="settings-section"><h3>Missing files</h3><p className="help">After you move games outside this app, scan again. Clear only the records whose files are still missing.</p><button disabled={busy || !games.some(g => g.missing)} onClick={async () => { try { await stopPlayer(); const result = await api('/missing/clear', {}); await refresh(); setNotice(`Cleared ${result.count} missing records.`); } catch (e) { setError(e.message); } }}>Clear missing records</button></div></>
       : <>{cleanupResult ? <><p>{cleanupResult.filter(r => r.ok).length} games moved to trash. Their game records and decision history were cleared.</p>{cleanupResult.filter(r => !r.ok).map(r => <p className="red" key={r.id}>{games.find(g => g.id === r.id)?.title || r.id}: {r.error}</p>)}<button className="primary" onClick={() => setModal(null)}>Back to library</button></> : <><p><strong>{preview?.games.length || 0} games</strong> marked · {size(preview?.bytes || 0)}</p><p className="help">Cleanup moves these files to <code>{preview?.trash}</code>. Each move is verified before its game record is cleared. Kept and undecided games stay in your library.</p><div className="cleanup-list">{preview?.games.map(game => <div key={game.id}><span>{game.title}<small>{shortSystems[game.system]} · {size(game.size)}</small></span><button disabled={busy} onClick={async () => { try { await api(`/games/${game.id}/decision`, { status: 'unreviewed' }); await refresh(); setPreview(await api('/cleanup/preview', {})); } catch (e) { setError(e.message); } }}>Unmark</button></div>)}</div><div className="modal-actions"><button disabled={busy} onClick={() => setModal(null)}>Keep reviewing</button><button className="danger" disabled={busy || !preview?.games.length} onClick={cleanup}>{busy ? <LoaderCircle className="spin" size={16}/> : <Trash2 size={16}/>} Move marked games to trash</button></div></> }</>}
     </div></div>}
   </div>;

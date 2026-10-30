@@ -4,8 +4,9 @@ import {Dropdown} from './Dropdown';
 import {thumbnail} from './assets';
 import {cardDetails} from './library-view';
 import {isBlocked} from './nes-compatibility';
+import {LanguageFilter} from './LanguageFilter';
 const statuses={unreviewed:'To try',keep:'Keepers',discard:'Marked',skip:'Later',all:'All games'};
-export function GamesPage({games,query,onQuery,filter,onFilter,category,onCategory,categories,sort,onSort,onPlay,busy,onSettings}){
+export function GamesPage({games,query,onQuery,filter,onFilter,category,onCategory,categories,language,onLanguage,languages,sort,onSort,onPlay,busy,onSettings}){
   const [view,setView]=useState(()=>localStorage.getItem('games-reducer-view')||'grid');
   const viewport=useRef(null),[position,setPosition]=useState(0),[dimensions,setDimensions]=useState({width:800,height:600});
   const columns=view==='list'?1:Math.max(2,Math.floor(dimensions.width/166)),rowHeight=view==='list'?76:268;
@@ -17,6 +18,7 @@ export function GamesPage({games,query,onQuery,filter,onFilter,category,onCatego
     <div className="library-page-toolbar">
       <label className="catalog-search"><Search size={18}/><input aria-label="Search library" placeholder="Search games" value={query} onChange={e=>onQuery(e.target.value)}/></label>
       <Dropdown label="Library category" value={category} options={categories} onChange={onCategory}><span>{categories.find(c=>c.value===category)?.label}</span></Dropdown>
+      <LanguageFilter value={language} onChange={onLanguage} options={languages}/>
       <Dropdown label="Library review status" value={filter} onChange={onFilter} options={Object.entries(statuses).map(([value,label])=>({value,label}))}><span>{statuses[filter]}</span></Dropdown>
       <Dropdown label="Library sort" value={sort} onChange={onSort} options={[{value:'title',label:'Title A–Z'},{value:'title-desc',label:'Title Z–A'},{value:'year',label:'Oldest first'},{value:'year-desc',label:'Newest first'}]}><span>{sort==='title'?'A–Z':sort==='title-desc'?'Z–A':sort==='year'?'Oldest':'Newest'}</span></Dropdown>
       <div className="view-switch" role="group" aria-label="Library layout"><button aria-label="Grid view" aria-pressed={view==='grid'} onClick={()=>setView('grid')}><LayoutGrid size={18}/></button><button aria-label="List view" aria-pressed={view==='list'} onClick={()=>setView('list')}><List size={18}/></button></div>
