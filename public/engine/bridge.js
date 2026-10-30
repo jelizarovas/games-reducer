@@ -10,7 +10,13 @@
   const timers = new Map();
   const scheduledRafs = new Map();
   const scheduledTimers = new Map();
-  let paused = false, muted = false, sequence = 0, file = null, loaded = false, deliveredFrames = 0;
+  let paused = false, muted = false, sequence = 0, file = null, loaded = false, deliveredFrames = 0, system = null;
+  const genesisKeyboard={KeyZ:'KeyA',KeyX:'KeyS',KeyC:'KeyD',KeyA:'KeyQ',KeyS:'KeyW',KeyD:'KeyE',KeyQ:null,KeyW:null,KeyE:null};
+  function remapKeyboard(event){
+    if(!event.isTrusted||system!=='megadrive'||!Object.hasOwn(genesisKeyboard,event.code))return;
+    event.preventDefault();event.stopImmediatePropagation();const code=genesisKeyboard[event.code];
+    if(code)document.querySelector('canvas')?.dispatchEvent(new KeyboardEvent(event.type,{code,key:code.replace('Key','').toLowerCase(),bubbles:true}));
+  }
   let speed = 1, realAnchor = performance.now(), virtualAnchor = realAnchor;
   window.reducerRuntimeNow = clock => clock === performance ? virtualAnchor + (paused ? 0 : performance.now() - realAnchor) * speed : clock.now();
   window.reducerRuntimeState = () => ({ paused, muted, speed, deliveredFrames, renderedFrames: window.reducerRenderedFrames || 0, audio: contexts.map(context => context.state) });
@@ -85,6 +91,7 @@
     if (message.type === 'load') {
       try {
         window.reducerSaveDatabase=message.saveDatabase;
+        system=message.system;
         if (!(message.bytes instanceof Uint8Array) || typeof message.name !== 'string') throw new Error('No ROM was supplied by the library.');
         const name = message.name;
         // Prefix save keys with the ROM ID, preventing same-name versions sharing SRAM.
@@ -110,8 +117,9 @@
     if (event.code === 'Tab') { event.preventDefault(); event.stopImmediatePropagation(); if (!event.repeat) send('fast-forward', { held: true }); }
     if (event.code === 'KeyF' && !event.repeat) { event.preventDefault(); event.stopImmediatePropagation(); send('fullscreen'); }
     if (event.code === 'Escape') { event.preventDefault(); event.stopImmediatePropagation(); send('review'); }
+    remapKeyboard(event);
   }, true);
-  window.addEventListener('keyup', event => { if(event.code==='AltLeft'||event.code==='AltRight')send('shortcut-hints',{held:false});if (event.code === 'Tab') { event.preventDefault(); send('fast-forward', { held: false }); } }, true);
+  window.addEventListener('keyup', event => { if(event.code==='AltLeft'||event.code==='AltRight')send('shortcut-hints',{held:false});if (event.code === 'Tab') { event.preventDefault(); send('fast-forward', { held: false }); }remapKeyboard(event); }, true);
   window.addEventListener('blur', () => { fastForward(false); send('fast-forward', { held: false });send('shortcut-hints',{held:false}); });
   // winit deliberately throws this sentinel after taking ownership of its event loop.
   const sentinel = "Using exceptions for control flow, don't mind me. This isn't actually an error!";

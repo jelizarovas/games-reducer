@@ -51,10 +51,25 @@ try{
   await page.getByRole('button',{name:'Choose folder',exact:true}).click();await page.getByRole('button',{name:'Choose ROM folder',exact:true}).click();
   await page.locator('.game-row').first().waitFor();assert.equal(await page.locator('.game-row').count(),3);
   let data=await store();assert.ok(data.games.every(g=>g.metadata.genre&&g.metadata.released&&g.metadata.cover));
-  await page.getByRole('combobox',{name:'Sort games',exact:true}).click();await page.keyboard.press('Shift+Slash');await page.getByRole('dialog',{name:'Keyboard shortcuts',exact:true}).waitFor();await page.keyboard.press('Escape');assert.equal(await page.getByRole('dialog').count(),0);
+  await page.getByRole('combobox',{name:'Sort games',exact:true}).click();await page.keyboard.press('Shift+Slash');await page.getByRole('dialog',{name:'Keyboard shortcuts',exact:true}).waitFor();await page.keyboard.press('Shift+Slash');assert.equal(await page.getByRole('dialog').count(),0);
   await page.getByRole('combobox',{name:'Sort games',exact:true}).click();await page.keyboard.down('Alt');await page.waitForFunction(()=>document.body.classList.contains('show-shortcuts'));await page.keyboard.up('Alt');await page.keyboard.press('Escape');await page.waitForFunction(()=>!document.body.classList.contains('show-shortcuts'));
   await page.screenshot({path:path.join(run,'library.png')});console.log('PASS folder scan, bundled metadata/artwork, and Pages subpath isolation');
   const order=['megadrive','snes','nes'];
+  // Review handoff must run the next game, not merely change the header/phase.
+  await page.getByRole('button',{name:data.games.find(g=>g.system==='snes').title,exact:true}).click();await playing();
+  await page.getByRole('button',{name:'Keep game',exact:true}).click();await page.locator('iframe[title="Playing Sonic The Hedgehog 2"]').waitFor();await playing();
+  await page.frames().find(f=>f.url().includes('/play.html')).waitForFunction(()=>window.reducerRuntimeState().renderedFrames>120&&!window.reducerRuntimeState().paused,{},{timeout:30000});
+  const nextEngine=page.frames().find(f=>f.url().includes('/play.html'));assert.equal(await page.evaluate(()=>document.activeElement.tagName),'IFRAME');assert.equal(await nextEngine.evaluate(()=>document.activeElement.tagName),'CANVAS');
+  await nextEngine.evaluate(()=>{window.keysObserved=[];document.querySelector('canvas').addEventListener('keydown',e=>window.keysObserved.push(e.code));});
+  for(const key of ['KeyZ','KeyX','KeyC','KeyA','KeyS','KeyD'])await page.keyboard.press(key);
+  assert.deepEqual(await nextEngine.evaluate(()=>window.keysObserved),['KeyA','KeyS','KeyD','KeyQ','KeyW','KeyE']);
+  await page.evaluate(()=>{document.body.tabIndex=-1;document.body.focus();});await page.keyboard.press('KeyZ');await page.waitForTimeout(100);assert.equal(await nextEngine.evaluate(()=>window.keysObserved.at(-1)),'KeyA');
+  await nextEngine.locator('canvas').focus();await page.keyboard.down('Alt');await page.waitForFunction(()=>document.body.classList.contains('show-shortcuts'));assert.equal(await page.getByRole('button',{name:'Keep game',exact:true}).getAttribute('data-shortcut'),'Alt+1');assert.equal(await page.getByRole('button',{name:'Mark game for removal',exact:true}).getAttribute('data-shortcut'),'Alt+2');await page.keyboard.press('Digit2');await page.keyboard.up('Alt');await page.locator('.nes-canvas').waitFor();await playing();await page.waitForFunction(()=>Number(document.querySelector('.nes-canvas')?.dataset.frames)>100);
+  assert.equal(await page.evaluate(()=>document.activeElement.tagName),'CANVAS');
+  await page.getByRole('button',{name:'Stop game',exact:true}).click();
+  for(let i=0;i<2;i++){await page.getByRole('button',{name:'More actions',exact:true}).click();await page.getByRole('menuitem',{name:'Undo last decision',exact:true}).click();}
+  await page.getByRole('combobox',{name:'Console',exact:true}).click();await page.getByRole('option',{name:'All',exact:true}).click();
+  console.log('PASS Keep and Remove automatically hand off to a next game that renders frames');
   for(const system of order){
     const g=data.games.find(g=>g.system===system);
     await page.getByRole('button',{name:g.title,exact:true}).click();await playing();

@@ -1,6 +1,6 @@
 import { useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
 import { Browser, Controller } from 'jsnes';
-import { engineKey } from './player-input';
+import { engineKey,keyboardCode } from './player-input';
 import {readRom,readCartridgeSave,writeCartridgeSave,SAVE_DATABASE} from './browser-library';
 import {assetUrl} from './assets';
 const buttons = { ArrowUp: Controller.BUTTON_UP, ArrowDown: Controller.BUTTON_DOWN, ArrowLeft: Controller.BUTTON_LEFT, ArrowRight: Controller.BUTTON_RIGHT,
@@ -24,6 +24,7 @@ export const Player = forwardRef(function Player({ game, paused, muted, onLoaded
   const callbacks = useRef({}); callbacks.current = { onLoaded, onReview, onError, onFullscreen, onFastForward,onShortcutHints,onShortcuts,onShortcut };
   const send = message => frame.current?.contentWindow?.postMessage({ source: 'games-reducer', ...message }, location.origin);
   useImperativeHandle(ref, () => ({
+    focus(){if(game.system==='nes'){const canvas=container.current?.querySelector('canvas');if(canvas){canvas.tabIndex=0;canvas.focus();}}else frame.current?.contentWindow?.document.querySelector('canvas')?.focus();},
     async flushSaves(){
       if(game.system==='nes'){nes.current?.stop();return flushNes();}
       send({type:'pause'});
@@ -36,6 +37,7 @@ export const Player = forwardRef(function Player({ game, paused, muted, onLoaded
       if (game.system !== 'nes') send({ type: 'fast-forward', held });
     },
     key(code, down, source = 'physical', playerNumber = 1) {
+      if(source==='keyboard'){code=keyboardCode(game.system,code);if(!code)return;}
       const token = `${playerNumber}|${code}`;
       const sources = heldKeys.current.get(token) || new Set();
       const wasDown = sources.size > 0;
@@ -92,7 +94,7 @@ export const Player = forwardRef(function Player({ game, paused, muted, onLoaded
           const {bytes,name}=await readRom(game.id);
           if(cancelled)return;
           send({ type: 'mute', muted: silence.current });
-          frame.current?.contentWindow?.postMessage({source:'games-reducer',type:'load',id:game.id,name,bytes,saveDatabase:SAVE_DATABASE},location.origin,[bytes.buffer]);
+          frame.current?.contentWindow?.postMessage({source:'games-reducer',type:'load',id:game.id,system:game.system,name,bytes,saveDatabase:SAVE_DATABASE},location.origin,[bytes.buffer]);
         }catch(error){callbacks.current.onError(error.message);}
       }
       if (message.type === 'loaded') { loaded = true; callbacks.current.onLoaded(); }
