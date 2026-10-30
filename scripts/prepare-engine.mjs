@@ -40,3 +40,9 @@ if (!audio.includes("event.data.type === 'mute'")) {
   audio = audio.replace('if (this.speed > 1) for', 'if (this.muted || this.speed > 1) for');
   fs.writeFileSync(audioFile, audio);
 }
+
+// Share cartridge storage with atomic browser backups.
+for (const [file,from] of [['public/engine/js/idb.js','../save-store.js'],['public/engine/pkg/snippets/jgenesis-web-84ddb6bbedfb3632/js/idb.js','../../../../save-store.js']]) {
+  const source=fs.readFileSync(file,'utf8');
+  fs.writeFileSync(file,"export {loadSaveFiles,writeSaveFile} from '"+from+"';\n\n"+source.slice(source.indexOf('export function loadBios')));
+}

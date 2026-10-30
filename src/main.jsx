@@ -5,6 +5,10 @@ import { api } from './api';
 import {pickRomFolder} from './browser-library';
 import {thumbnail} from './assets';
 import {BrowserSettings} from './BrowserSettings';
+import {GamesPage} from './LibraryPages';
+import {useRoute,routePath} from './routes';
+import {FastForward} from 'lucide-react';
+import './library-pages.css';
 import { consoleNames, matchesConsole, releaseYear, sortGames, gameCategories, matchesCategory } from './library-view';
 import { TouchControls } from './TouchControls';
 import { SessionMenu } from './SessionMenu';
@@ -23,6 +27,7 @@ const size = bytes => bytes >= 1073741824 ? `${(bytes / 1073741824).toFixed(2)} 
 const Pad = ({ children, tone = '' }) => <span className={`pad ${tone}`}>{children}</span>;
 
 function App() {
+  const [route,setRoute]=useRoute();
   const [state, setState] = useState(null), [games, setGames] = useState([]), [selected, setSelected] = useState(null);
   const [system, setSystem] = useState('all'), [filter, setFilter] = useState('unreviewed'), [query, setQuery] = useState('');
   const [phase, setPhase] = useState('ready'), [playing, setPlaying] = useState(null), [busy, setBusy] = useState(false);
@@ -37,7 +42,7 @@ function App() {
   const [muted, setMuted] = useState(() => localStorage.getItem('games-reducer-muted') === 'true');
   const [touchPanels, setTouchPanels] = useState({p1:false,p2:false});
   useEffect(() => { localStorage.setItem('games-reducer-muted', String(muted)); }, [muted]);
-  const turbo = useRef({ pad: false, keyboard: false, active: false });
+  const turbo = useRef({ pad: false, keyboard: false, ui:false, active: false });
   const expanding = useRef(false);
   const player = useRef(null), actions = useRef({}), starting = useRef(false), dialog = useRef(null), activeKeys = useRef(new Set());
   const metadataAttempts = useRef(new Set());
@@ -64,16 +69,19 @@ function App() {
   }, []);
 
   function releaseKeys() {
-    turbo.current.pad = false; turbo.current.keyboard = false; updateSpeed();
+    turbo.current.pad = false; turbo.current.keyboard = false; turbo.current.ui=false; updateSpeed();
     for (const code of activeKeys.current) player.current?.key(code, false);
     activeKeys.current.clear();
   }
   function updateSpeed() {
-    const held = framePhase.current === 'playing' && (turbo.current.pad || turbo.current.keyboard);
+    const held = framePhase.current === 'playing' && (turbo.current.pad || turbo.current.keyboard || turbo.current.ui);
     if (held === turbo.current.active) return;
     turbo.current.active = held; player.current?.fastForward(held); setFastForward(held);
   }
   function keyboardSpeed(held) { turbo.current.keyboard = held; updateSpeed(); }
+  function buttonSpeed(held){turbo.current.ui=held;updateSpeed();}
+  function navigate(next){if(next!=='player')review();setModal(null);setExpanded(false);setRoute(next);refresh().catch(e=>setError(e.message));}
+  useEffect(()=>{if(route!=='player'){review();refresh().catch(e=>setError(e.message));}},[route]);
   function review() {
     if (framePhase.current !== 'playing') return;
     releaseKeys(); setPhase('decision'); framePhase.current = 'decision';
@@ -81,11 +89,14 @@ function App() {
   }
   async function stopPlayer() {
     if (!playing) return;
+    review();
+    if(framePhase.current!=='loading')await player.current?.flushSaves?.();
     releaseKeys(); setPlaying(null); setPhase('ready'); framePhase.current = 'ready';
     await api('/player/stop', { id: playing.id });
   }
   async function playGame(game = current) {
     if (!game || game.missing || starting.current) return;
+    setRoute('player');
     starting.current = true; setError('');
     try {
       if (playing?.id === game.id) { starting.current = false; if (phase === 'decision') resume(); return; }
@@ -233,7 +244,7 @@ function App() {
     return () => document.removeEventListener('fullscreenchange', changed);
   }, []);
   function resume() { setPhase('playing'); framePhase.current = 'playing'; }
-  mode.current = busy ? 'busy' : modal ? 'modal' : phase;
+  mode.current = busy ? 'busy' : modal || route!=='player' ? 'modal' : phase;
   actions.current = { review, play: () => playGame(), keep: () => decide('keep'), discard: () => decide('discard'), skip: () => decide('skip'), resume, undo, finish,
     next: () => moveSelection(1), previous: () => moveSelection(-1),
     pageNext: () => moveSelection(20), pagePrevious: () => moveSelection(-20),
@@ -243,11 +254,12 @@ function App() {
     nextFilter: () => { if (window.matchMedia('(max-width:900px)').matches) return moveSelection(1); const keys = [...Object.keys(labels), 'all']; chooseFilter(keys[(keys.indexOf(filter) + 1) % keys.length]); },
     previousSystem: () => { const keys = Object.keys(consoleNames); chooseSystem(keys[(keys.indexOf(system) + keys.length - 1) % keys.length]); },
     nextSystem: () => { const keys = Object.keys(consoleNames); chooseSystem(keys[(keys.indexOf(system) + 1) % keys.length]); },
-    close: () => { if (!busy) setModal(null); },
-    activate: () => { if (dialog.current?.contains(document.activeElement)) document.activeElement.click(); },
+    close: () => { if (!busy){if(modal)setModal(null);else navigate('player');} },
+    activate: () => { if(document.querySelector('.dropdown-panel')?.contains(document.activeElement)||dialog.current?.contains(document.activeElement)||route!=='player')document.activeElement?.click(); },
     focusNext: () => focusDialog(1), focusPrevious: () => focusDialog(-1) };
   function focusDialog(delta) {
-    const nodes = [...(dialog.current?.querySelectorAll('button:not(:disabled),input:not(:disabled)') || [])];
+    const scope=document.querySelector('.dropdown-panel')||dialog.current||(route!=='player'?document.querySelector('.app-shell'):null);
+    const nodes = [...(scope?.querySelectorAll('button:not(:disabled),input:not(:disabled),a[href]') || [])].filter(el=>el.getClientRects().length);
     if (!nodes.length) return;
     const target = nodes[(nodes.indexOf(document.activeElement) + delta + nodes.length) % nodes.length];
     target.focus(); target.scrollIntoView({ block: 'nearest' });
@@ -279,6 +291,7 @@ function App() {
   const playingSystem = useRef(system); playingSystem.current = playing?.system || system;
   useEffect(() => {
     const keydown = e => {
+      if(route!=='player')return;
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName) && e.code !== 'Escape') return;
       if (e.code === 'Tab' && phase === 'playing') { e.preventDefault(); keyboardSpeed(true); return; }
       if (e.repeat) return;
@@ -296,9 +309,11 @@ function App() {
     };
     const keyup = e => { if (e.code === 'Tab') keyboardSpeed(false); if (phase === 'playing') player.current?.key(e.code, false, 'keyboard'); };
     const visibility = () => { if (document.hidden) review(); };
+    const blur=()=>{buttonSpeed(false);keyboardSpeed(false);};
     window.addEventListener('keydown', keydown); window.addEventListener('keyup', keyup); document.addEventListener('visibilitychange', visibility);
-    return () => { window.removeEventListener('keydown', keydown); window.removeEventListener('keyup', keyup); document.removeEventListener('visibilitychange', visibility); };
-  }, [phase, modal, busy, expanded]);
+    window.addEventListener('blur',blur);
+    return () => { window.removeEventListener('blur',blur);window.removeEventListener('keydown', keydown); window.removeEventListener('keyup', keyup); document.removeEventListener('visibilitychange', visibility); };
+  }, [phase, modal, busy, expanded,route]);
   useEffect(() => {
     if (!playing) return;
     const timer = setInterval(() => {
@@ -323,17 +338,18 @@ function App() {
       <div className="header-context">
       <Dropdown label="Console" value={system} onChange={chooseSystem} triggerClassName="brand console-picker" options={Object.entries(consoleNames).map(([value,label])=>({value,label}))}><Gamepad2 size={22}/><span>{system === 'all' ? 'Games' : consoleNames[system]} Reducer</span></Dropdown>
       <ChevronRight className="header-separator" size={16}/>
-      <h1 className="header-title" title={current?.title}>{current?.title || 'Choose a game'}</h1>
-      <button className="icon-button" aria-label="Game information" title="Game information" disabled={!current} onClick={() => { if (phase === 'playing') review(); setModal('info'); }}><Info size={19}/></button>
+      <h1 className="header-title" title={current?.title}>{route==='games'?'Games':current?.title || 'Choose a game'}</h1>
+      {route==='player'&&<button className="icon-button" aria-label="Game information" title="Game information" disabled={!current} onClick={() => { if (phase === 'playing') review(); setModal('info'); }}><Info size={19}/></button>}
       </div>
-      <div className="header-playback" role="group" aria-label="Playback controls">
+      {route!=='player'&&<nav className="route-navigation" aria-label="Main navigation">{[['player','Player'],['games','Games']].map(([key,label])=><a key={key} href={routePath(key)} aria-current={route===key?'page':undefined} onClick={e=>{e.preventDefault();navigate(key);}}>{label}</a>)}</nav>}
+      <div className="header-playback" role="group" aria-label="Playback controls" hidden={route!=='player'}>
       <span className={`header-status ${phase === 'decision' ? 'paused' : 'quiet-status'}`}>{playing ? phase === 'decision' ? 'Paused' : `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}` : current ? labels[current.status] : ''}</span>
       {(phase === 'playing' || phase === 'decision') && <div className="header-decisions" role="group" aria-label="Review game">
         <button className="keep" aria-label="Keep game" title="Keep · A / 1" disabled={busy} onClick={() => decide('keep')}><Check size={18}/><span>Keep</span></button>
         <button className="discard" aria-label="Mark game for removal" title="Mark for removal · B / 2" disabled={busy} onClick={() => decide('discard')}><Trash2 size={18}/><span>Remove</span></button>
         <button aria-label="Try game later" title="Later · X / 3" disabled={busy} onClick={() => decide('skip')}><SkipForward size={18}/><span>Later</span></button>
       </div>}
-        {fastForward && <span className="turbo active" aria-live="polite">3×</span>}
+        {playing&&<button className="icon-button hold-turbo" aria-label="Hold to fast-forward" title="Hold for 3× speed · RT / Tab" aria-pressed={fastForward} disabled={phase!=='playing'} onPointerDown={e=>{if(e.button!==0)return;e.preventDefault();e.currentTarget.setPointerCapture(e.pointerId);buttonSpeed(true);}} onPointerUp={()=>buttonSpeed(false)} onPointerCancel={()=>buttonSpeed(false)} onLostPointerCapture={()=>buttonSpeed(false)} onBlur={()=>buttonSpeed(false)} onKeyDown={e=>{if(['Space','Enter'].includes(e.code)){e.preventDefault();e.stopPropagation();buttonSpeed(true);}}} onKeyUp={e=>{if(['Space','Enter'].includes(e.code)){e.preventDefault();e.stopPropagation();buttonSpeed(false);}}}><FastForward size={18}/></button>}
         {phase === 'ready' && <button className="icon-button" aria-label="Play game" title="Play" disabled={!current || busy || current.missing} onClick={() => playGame()}><Play size={20}/></button>}
         {playing && <button className="icon-button" title="Back to library" aria-label="Stop game" onClick={() => stopPlayer().catch(e => setError(e.message))}><Square size={18}/></button>}
         {phase === 'playing' && <button className="icon-button" aria-label="Review game" title="Review · Back + Start / Esc" onClick={review}><Pause size={20}/></button>}
@@ -346,10 +362,12 @@ function App() {
         {expanded && fullscreenHint && <button className="icon-button" aria-label="Enter browser fullscreen" title={fullscreenHint} onClick={nativeFullscreen}><Maximize size={15}/></button>}
         <button className="icon-button" aria-label="Toggle fullscreen" title="Fullscreen · L3 / F" onClick={toggleFullscreen}><Maximize size={19}/></button>
         {controller && <Gamepad2 className="connected header-secondary" size={18} aria-label="Controller connected"/>}
-        <SessionMenu onFinish={finish} onUndo={undo} onController={()=>openPanel('controller')} onSettings={()=>openPanel('settings')} busy={busy}/>
+        <SessionMenu games={games} saveCount={state?.saveCount} onRefresh={()=>refresh().catch(e=>setError(e.message))} onNavigate={navigate} onFinish={finish} onUndo={undo} onController={()=>openPanel('controller')} onSettings={()=>openPanel('settings')} busy={busy}/>
       </div>
     </header>
-    <div className="workspace">
+    {route==='games'&&<GamesPage games={visible} query={query} onQuery={setQuery} filter={filter} onFilter={chooseFilter} category={category} onCategory={chooseCategory} categories={categoryOptions} sort={sort} onSort={setSort} onPlay={playGame} busy={busy} onSettings={()=>openPanel('settings')}/>}
+    {route!=='player'&&error&&!modal&&<div className="alert error" role="alert">{error}<button aria-label="Dismiss error" onClick={()=>setError('')}><X size={16}/></button></div>}
+    <div className="workspace" hidden={route!=='player'}>
       <aside className="sidebar" aria-label="Game library">
         <div className="library-tools">
           <div className="library-search"><div className="search"><Search size={17}/><input placeholder="Search games" aria-label="Find a game" value={query} onChange={e => setQuery(e.target.value)}/>
@@ -364,7 +382,7 @@ function App() {
         {error && !modal && <div className="alert error" role="alert">{error}<button aria-label="Dismiss error" onClick={() => setError('')}><X size={16}/></button></div>}
         <section className="game-stage" aria-label="Game player">
           <div className="stage-body"><div className="screen" data-phase={phase}>
-            {playing ? <Player key={playing.id} ref={player} game={playing} muted={muted} paused={phase === 'decision'} onLoaded={() => { setPhase('playing'); framePhase.current = 'playing'; }} onReview={review} onFastForward={keyboardSpeed} onFullscreen={() => expanded && !document.fullscreenElement ? nativeFullscreen() : toggleFullscreen()} onError={message => { setError(message); stopPlayer().catch(() => {}); }}/>
+            {playing ? <Player key={playing.id} ref={player} game={playing} muted={muted} paused={phase === 'decision'} onLoaded={() => { const next=route==='player'&&!modal?'playing':'decision';setPhase(next);framePhase.current=next; }} onReview={review} onFastForward={keyboardSpeed} onFullscreen={() => expanded && !document.fullscreenElement ? nativeFullscreen() : toggleFullscreen()} onError={message => { setError(message); stopPlayer().catch(() => {}); }}/>
               : <div className="preview-screen"><div className="preview-content">
                 {current ? <img className="preview-cover" src={thumbnail(current)} alt={`${current.title} cover`}/> : <Gamepad2 size={48}/>}
                 {!current && <button className="play-button" onClick={() => setModal('settings')}>Choose folder</button>}
@@ -380,7 +398,7 @@ function App() {
     {modal && <div className="modal-backdrop" onPointerDown={e => { if(e.target===e.currentTarget && !busy)setModal(null); }}><div className={`modal ${modal === 'cleanup' ? 'wide' : ''}`} role="dialog" aria-modal="true" aria-label={modal === 'cleanup' ? 'Finish session' : modal === 'controller' ? 'Controller menu' : modal === 'info' ? 'Game information' : 'Library settings'} ref={dialog}>
       <div className="modal-heading"><div><h2>{modal === 'cleanup' ? 'Review before cleanup.' : modal === 'controller' ? 'Controller menu' : modal === 'info' ? 'Game information' : 'Library settings'}</h2></div><button className="icon-button" aria-label="Close dialog" disabled={busy} onClick={() => setModal(null)}><X/></button></div>
       {error && <div className="alert error" role="alert">{error}<button aria-label="Dismiss error" onClick={() => setError('')}><X size={16}/></button></div>}
-      {modal === 'info' ? <div className="game-info"><img src={thumbnail(current)} alt={`${current?.title} cover`}/><div><h3>{current?.title}</h3><p>{shortSystems[current?.system]} · {size(current?.size || 0)}</p>{current?.metadata.description && <p>{current.metadata.description}</p>}<button disabled={!current || mediaBusy || !state?.metadataConfigured} onClick={scrape}><Download size={16}/> Fetch info</button></div></div> : modal === 'controller' ? <ControllerMenu system={system} filter={filter} onSystem={chooseSystem} onFilter={chooseFilter} onFullscreen={toggleFullscreen} onSettings={() => setModal('settings')} onFetch={scrape} canFetch={!!current && !mediaBusy && !!state?.metadataConfigured} onUndo={undo} onFinish={finish} onClose={() => setModal(null)}/> : modal === 'settings' ? <><BrowserSettings state={state} busy={busy} onScan={scan} onStop={stopPlayer} onRefresh={refresh} onError={setError}/><div className="settings-section"><h3>Controls</h3><p>Browse: D-pad / left stick selects · A plays · LB/RB console · Left/Right filter · LT/RT jumps 20 · X menu · Y undo · Start finish session.</p><p>L3 toggles fullscreen view from any screen. F requests browser fullscreen. In game: hold RT/R2 or Tab for 3× fast forward, release for normal speed. Back + Start opens review. A keeps, B marks, X skips, Y resumes. Release buttons before choosing.</p><p className="help">Keyboard: arrows move; Genesis A/S/D, Q/W/E; SNES Z/X/A/S, D/C shoulders, Right Shift select; NES X/Z, Right Ctrl select. Enter starts games; Esc opens review.</p></div><div className="settings-section"><h3>Missing files</h3><p className="help">After you move games outside this app, scan again. Clear only the records whose files are still missing.</p><button disabled={busy || !games.some(g => g.missing)} onClick={async () => { try { await stopPlayer(); const result = await api('/missing/clear', {}); await refresh(); setNotice(`Cleared ${result.count} missing records.`); } catch (e) { setError(e.message); } }}>Clear missing records</button></div></>
+      {modal === 'info' ? <div className="game-info"><img src={thumbnail(current)} alt={`${current?.title} cover`}/><div><h3>{current?.title}</h3><p>{shortSystems[current?.system]} · {size(current?.size || 0)}</p>{current?.metadata.description && <p>{current.metadata.description}</p>}<button disabled={!current || mediaBusy || !state?.metadataConfigured} onClick={scrape}><Download size={16}/> Fetch info</button></div></div> : modal === 'controller' ? <ControllerMenu system={system} filter={filter} onSystem={chooseSystem} onFilter={chooseFilter} onFullscreen={toggleFullscreen} onSettings={() => setModal('settings')} onFetch={scrape} canFetch={!!current && !mediaBusy && !!state?.metadataConfigured} onUndo={undo} onFinish={finish} onClose={() => setModal(null)}/> : modal === 'settings' ? <><BrowserSettings state={state} busy={busy} onScan={scan} onStop={stopPlayer} onRefresh={refresh} onError={setError} onFlush={()=>{if(framePhase.current==='loading')throw new Error('Wait for the game to finish loading before exporting.');return player.current?.flushSaves?.();}}/><div className="settings-section"><h3>Controls</h3><p>Browse: D-pad / left stick selects · A plays · LB/RB console · Left/Right filter · LT/RT jumps 20 · X menu · Y undo · Start finish session.</p><p>L3 toggles fullscreen view from any screen. F requests browser fullscreen. In game: hold RT/R2 or Tab for 3× fast forward, release for normal speed. Back + Start opens review. A keeps, B marks, X skips, Y resumes. Release buttons before choosing.</p><p className="help">Keyboard: arrows move; Genesis A/S/D, Q/W/E; SNES Z/X/A/S, D/C shoulders, Right Shift select; NES X/Z, Right Ctrl select. Enter starts games; Esc opens review.</p></div><div className="settings-section"><h3>Missing files</h3><p className="help">After you move games outside this app, scan again. Clear only the records whose files are still missing.</p><button disabled={busy || !games.some(g => g.missing)} onClick={async () => { try { await stopPlayer(); const result = await api('/missing/clear', {}); await refresh(); setNotice(`Cleared ${result.count} missing records.`); } catch (e) { setError(e.message); } }}>Clear missing records</button></div></>
       : <>{cleanupResult ? <><p>{cleanupResult.filter(r => r.ok).length} games moved to trash. Their game records and decision history were cleared.</p>{cleanupResult.filter(r => !r.ok).map(r => <p className="red" key={r.id}>{games.find(g => g.id === r.id)?.title || r.id}: {r.error}</p>)}<button className="primary" onClick={() => setModal(null)}>Back to library</button></> : <><p><strong>{preview?.games.length || 0} games</strong> marked · {size(preview?.bytes || 0)}</p><p className="help">Cleanup moves these files to <code>{preview?.trash}</code>. Each move is verified before its game record is cleared. Kept and undecided games stay in your library.</p><div className="cleanup-list">{preview?.games.map(game => <div key={game.id}><span>{game.title}<small>{shortSystems[game.system]} · {size(game.size)}</small></span><button disabled={busy} onClick={async () => { try { await api(`/games/${game.id}/decision`, { status: 'unreviewed' }); await refresh(); setPreview(await api('/cleanup/preview', {})); } catch (e) { setError(e.message); } }}>Unmark</button></div>)}</div><div className="modal-actions"><button disabled={busy} onClick={() => setModal(null)}>Keep reviewing</button><button className="danger" disabled={busy || !preview?.games.length} onClick={cleanup}>{busy ? <LoaderCircle className="spin" size={16}/> : <Trash2 size={16}/>} Move marked games to trash</button></div></> }</>}
     </div></div>}
   </div>;

@@ -78,8 +78,13 @@
   window.addEventListener('message', async event => {
     if (event.origin !== location.origin || event.source !== parent || event.data?.source !== 'games-reducer') return;
     const message = event.data;
+    if(message.type==='flush-saves'){
+      try{await window.reducerFlushSaves?.();send('saves-flushed',{requestId:message.requestId});}
+      catch(error){send('saves-flushed',{requestId:message.requestId,error:error.message});}
+    }
     if (message.type === 'load') {
       try {
+        window.reducerSaveDatabase=message.saveDatabase;
         if (!(message.bytes instanceof Uint8Array) || typeof message.name !== 'string') throw new Error('No ROM was supplied by the library.');
         const name = message.name;
         // Prefix save keys with the ROM ID, preventing same-name versions sharing SRAM.

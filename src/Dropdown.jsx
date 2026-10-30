@@ -2,7 +2,7 @@ import {useEffect,useId,useLayoutEffect,useRef,useState} from 'react';
 import {createPortal} from 'react-dom';
 import {ChevronDown,Check} from 'lucide-react';
 
-export function Dropdown({label,value,options,onChange,children,triggerClassName='',menu=false,width=210}) {
+export function Dropdown({label,value,options,onChange,children,triggerClassName='',menu=false,width=210,panelHeader,maxHeight=320,onOpen}) {
   const [open,setOpen]=useState(false),[position,setPosition]=useState({left:0,top:0});
   const trigger=useRef(null),panel=useRef(null),id=useId();
   const close=(focus=false)=>{setOpen(false);if(focus)trigger.current?.focus();};
@@ -10,7 +10,7 @@ export function Dropdown({label,value,options,onChange,children,triggerClassName
   useLayoutEffect(()=>{
     if(!open)return;
     const place=()=>{
-      const rect=trigger.current.getBoundingClientRect(),height=Math.min(panel.current.scrollHeight,320,innerHeight-16),actualWidth=Math.min(width,innerWidth-16);
+      const rect=trigger.current.getBoundingClientRect(),height=Math.min(panel.current.scrollHeight,maxHeight,innerHeight-16),actualWidth=Math.min(width,innerWidth-16);
       const below=innerHeight-rect.bottom-8,above=rect.top-8;
       setPosition({left:Math.max(8,Math.min(rect.left,innerWidth-actualWidth-8)),top:below<height&&above>below?Math.max(8,rect.top-height-4):Math.min(rect.bottom+4,innerHeight-height-8)});
     };
@@ -18,7 +18,7 @@ export function Dropdown({label,value,options,onChange,children,triggerClassName
     (panel.current.querySelector('[aria-selected="true"]:not(:disabled)')||items()[0])?.focus({preventScroll:true});
     window.addEventListener('resize',place);
     return()=>window.removeEventListener('resize',place);
-  },[open,width]);
+  },[open,width,maxHeight]);
   useEffect(()=>{
     if(!open)return;
     const outside=e=>{if(!trigger.current?.contains(e.target)&&!panel.current?.contains(e.target))close();};
@@ -39,10 +39,11 @@ export function Dropdown({label,value,options,onChange,children,triggerClassName
   };
   return <>
     <button ref={trigger} className={`dropdown-trigger ${triggerClassName}`} role={menu?undefined:'combobox'} aria-label={label} title={label} aria-haspopup={menu?'menu':'listbox'} aria-controls={open?id:undefined} aria-expanded={open} data-value={value}
-      onClick={()=>setOpen(v=>!v)} onKeyDown={e=>{if(['ArrowDown','ArrowUp','Enter',' '].includes(e.key)){e.preventDefault();e.stopPropagation();setOpen(true);}if(e.key==='Escape'&&open){e.preventDefault();e.stopPropagation();close(true);}}}>
+      onClick={()=>{if(!open)onOpen?.();setOpen(v=>!v);}} onKeyDown={e=>{if(['ArrowDown','ArrowUp','Enter',' '].includes(e.key)){e.preventDefault();e.stopPropagation();if(!open)onOpen?.();setOpen(true);}if(e.key==='Escape'&&open){e.preventDefault();e.stopPropagation();close(true);}}}>
       {children}<ChevronDown className="dropdown-arrow" size={12}/>
     </button>
-    {open&&createPortal(<div ref={panel} id={id} className="dropdown-panel" style={{...position,width:`min(${width}px, calc(100vw - 16px))`}} role={menu?'menu':'listbox'} aria-label={label} onKeyDown={keys} onKeyUp={e=>e.stopPropagation()}>
+    {open&&createPortal(<div ref={panel} id={id} className="dropdown-panel" style={{...position,width:`min(${width}px, calc(100vw - 16px))`,maxHeight:`min(${maxHeight}px, calc(100dvh - 16px))`}} role={menu?'menu':'listbox'} aria-label={label} onKeyDown={keys} onKeyUp={e=>e.stopPropagation()}>
+      {panelHeader}
       {options.map(option=><button key={option.value} role={menu?'menuitem':'option'} aria-selected={menu?undefined:value===option.value} disabled={option.disabled} onClick={()=>{close(true);if(menu)option.onSelect?.();else onChange(option.value);}}>
         {option.icon}<span>{option.label}</span>{!menu&&value===option.value&&<Check size={15}/>}
       </button>)}

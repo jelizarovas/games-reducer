@@ -4,6 +4,14 @@ import {zipSync} from 'fflate';
 import {safePath,identity,validateBackup,decodeRom,LIMIT,safeMetadata} from '../src/browser-core.js';
 const record={system:'nes',relative_path:'nes/Mario.nes',size:16,status:'keep',seconds:10,metadata:{genre:'Platformer'}};
 const backup=games=>({format:'games-reducer-backup',version:1,games});
+test('version two backups validate cartridge data while keeping version one compatible',()=>{
+  const save={key:'a'.repeat(24)+'-Mario.nes',files:{sav:'AAECAw=='}};
+  assert.deepEqual(validateBackup({...backup([record]),version:2,saves:[save]}).saves,[save]);
+  assert.deepEqual(validateBackup(backup([record])).saves,[]);
+  const large={...save,files:{sav:Buffer.alloc(1024*1024,42).toString('base64')}};
+  assert.equal(validateBackup({...backup([record]),version:2,saves:[large]}).saves[0].files.sav,large.files.sav);
+  for(const saves of [[{...save,key:'../bad'}],[save,save],[{...save,files:{sav:'not-base64'}}],[{...save,files:JSON.parse('{"__proto__":"AAAA"}')}]])assert.throws(()=>validateBackup({...backup([record]),version:2,saves}));
+});
 test('portable identities and backups do not depend on a Windows folder path',()=>{
   assert.equal(identity({...record,relative_path:'nes\\Mario.nes'}),identity(record));
   assert.equal(validateBackup(backup([record])).games[0].status,'keep');

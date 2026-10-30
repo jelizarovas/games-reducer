@@ -17,9 +17,11 @@ Supported: Genesis / Mega Drive, SNES, and NES cartridge files, plus ZIPs contai
 
 IndexedDB stores the folder handle, inventory, keep/remove/later decisions, play time, and undo history. ROMs remain in the chosen folder and are read only for playback or verified cleanup. The app makes no API requests and uploads no ROMs or review data. Only one tab can edit the library at a time.
 
-**Export backup** downloads a JSON file containing review decisions, play time, and metadata. **Import backup** validates that file, shows a confirmation, and replaces matching records. Other games remain unchanged. Matching uses console, relative filename, and size, so a backup can move between devices even when the drive letter changes. You may import before picking a folder; unmatched records are retained until scanning finds them.
+**Export backup** downloads a JSON file containing review decisions, play time, metadata, and **in-game cartridge saves** for Genesis, SNES, and battery-backed NES games. It waits for pending save writes. **Import backup** validates the whole file, shows a confirmation, and atomically replaces matching review records and cartridge saves. Other games remain unchanged. Matching uses console, relative filename, and size, so a backup can move between devices even when the drive letter changes. You may import before picking a folder; unmatched records are retained until scanning finds them. Older version-one review-only backups still work and leave cartridge saves untouched.
 
-Backups are for library review progress, not emulator save states or cartridge SRAM. The jgenesis engine retains its own cartridge saves in the browser. Clearing site data also clears local progress and saved folder access. Export a review backup before changing browsers, devices, or site URLs. GitHub Pages and localhost are separate browser storage locations.
+To move between the PC and Hub: save using the game's own save feature, open **... > Library settings > Export backup**, and copy the JSON file and your ROM folder to the other device. Open the same site there, import the backup, then choose the copied ROM folder. Keep filenames and console subfolders the same. This restores the game's normal save/continue data, not an exact snapshot of its current screen. Password-only games still need their passwords; games with no save feature do not gain one.
+
+Existing Genesis/SNES saves on the same browser origin are copied into the new shared storage without removing the originals. Clearing site data clears review progress, cartridge saves, and saved folder access. Export before changing browsers, devices, or site URLs. GitHub Pages and localhost are separate storage locations; use export/import to transfer between them. ROM files are never embedded in backups.
 
 The previous desktop SQLite database remains untouched in `data/`. A private migration export was produced in `.validation/desktop-progress-backup.json`; import that file in the browser edition to carry over existing reviews. Neither location is published.
 
@@ -47,10 +49,12 @@ A failed copy or verification keeps the original. A crash may leave a duplicate 
 
 - Click a game to play. D-pad/left stick browses; A plays; LB/RB changes console; LT/RT jumps through the list.
 - Back + Start or Escape pauses for review. Keep, Remove, and Later advance within the active console/category/search queue.
-- Hold RT/R2 or Tab for 3x fast forward; release for normal speed.
+- Hold the header's **fast-forward button**, RT/R2, or Tab for 3x fast forward; release for normal speed. Mouse and touch holds release even when the pointer leaves the button.
 - L3 or F toggles fullscreen. The header contains mute and complete draggable red P1 / blue P2 controllers.
 - Category, search, sort, and review filters remain usable during gameplay.
 - The library scrolls vertically on desktop and docks horizontally at the bottom on narrow screens. The game stays 4:3.
+- **... > Games library** opens `/games/`, with a virtualized cover grid or compact list and the same console, category, review, search, and sort filters. Click a card to play.
+- The **...** menu includes collection progress: reviewed/remaining totals, kept, marked/later games, play time, and cartridge-save count. Switching between the player and games library pauses and preserves the loaded game.
 
 ## Development
 
@@ -65,7 +69,7 @@ This starts **Vite only**, on http://127.0.0.1:3001. HMR is disabled to preserve
 
 ## GitHub Pages
 
-The included `.github/workflows/pages.yml` builds and publishes `dist/`. In repository **Settings > Pages**, use **GitHub Actions** as the publishing source. The workflow derives the correct repository URL prefix from Pages configuration, including custom domains. All asset, engine, and catalog URLs honor that prefix.
+The included `.github/workflows/pages.yml` builds and publishes `dist/`. In repository **Settings > Pages**, use **GitHub Actions** as the publishing source. The workflow derives the correct repository URL prefix from Pages configuration, including custom domains. All asset, engine, and catalog URLs honor that prefix. The build emits a real `games/index.html` entry point so direct links and refreshing the games route work on static hosting.
 
 GitHub Pages does not supply the COOP/COEP headers needed by the WebAssembly audio engine. The same-origin `isolation-sw.js` service worker adds those response headers locally, then the bootstrap reloads once before mounting the app. It does not cache ROMs or progress and is not an offline installation feature. A network connection is needed to load the app and assets.
 
@@ -80,7 +84,7 @@ npm run test:browser
 
 On PowerShell, set `$env:BASE_PATH='/games-reducer/'` before building. Browser checks use installed Chrome and three Mario/Sonic ROMs from `C:/RetroBat/roms`; set `TEST_ROM_ROOT` and `CHROME_PATH` for another development machine. They copy ROM data into disposable browser-private files, substitute the folder picker with real browser directory handles, and never move the original ROMs. The test host serves static files only, with no isolation headers or API.
 
-Coverage includes all three emulators, project-site URLs, service worker isolation, metadata, live filters, local persistence, concurrent-tab protection, malformed backup rejection, fresh-profile import before folder selection, and verified cleanup on disposable files. Native operating-system picker prompts and physical Surface Hub/controller performance still need testing on that device.
+Coverage includes all three emulators, held fast-forward/release, route transitions without unmounting the game, direct-route loads, desktop/mobile layouts, project-site isolation, metadata, live filters, local persistence, concurrent-tab protection, malformed backup rejection, legacy save migration, byte-for-byte fresh-profile save restore, and verified cleanup on disposable files. An original NES test cartridge increments battery RAM on each boot to verify writes, backup export, import, and loading that save on the next boot. Native operating-system picker prompts and physical Surface Hub/controller performance still need testing on that device.
 
 ## Emulator source
 

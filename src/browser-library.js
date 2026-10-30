@@ -1,14 +1,16 @@
-import {SYSTEMS,LIMIT,statuses,cleanTitle,extension,safePath,identity,safeMetadata,decodeRom,validateBackup} from './browser-core';
+import {SYSTEMS,LIMIT,statuses,cleanTitle,extension,safePath,identity,safeMetadata,decodeRom,validateBackup,validSaveKey} from './browser-core';
 import {assetUrl} from './assets';
 
 // Handles stay in IndexedDB; ROM bytes are read only when starting a game.
-const DB_NAME=`games-reducer:${new URL(import.meta.env.BASE_URL,location.href).pathname}`;
+export const SAVE_DATABASE=`games-reducer:${new URL(import.meta.env.BASE_URL,location.href).pathname}`;
+const DB_NAME=SAVE_DATABASE;
 let db,initializing,library,player=null,preview=null,catalogPromise,releaseTab;
 const empty=()=>({version:1,root:null,trash:null,games:[],history:[],pending:[],current:null});
 function database(){return new Promise((resolve,reject)=>{
-  const request=indexedDB.open(DB_NAME,1);
-  request.onupgradeneeded=()=>request.result.createObjectStore('library');
-  request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);
+  const request=indexedDB.open(DB_NAME,2);
+  request.onupgradeneeded=()=>{for(const [name,options]of [['library',undefined],['files',{keyPath:'key'}]])if(!request.result.objectStoreNames.contains(name))request.result.createObjectStore(name,options);};
+  request.onsuccess=()=>{request.result.onversionchange=()=>request.result.close();resolve(request.result);};request.onerror=()=>reject(request.error);
+  request.onblocked=()=>reject(new Error('Close other Games Reducer tabs and reload to upgrade local saves.'));
 });}
 function stored(mode,value){return new Promise((resolve,reject)=>{
   const tx=db.transaction('library',mode),store=tx.objectStore('library');
@@ -25,6 +27,18 @@ async function init(){
       }).catch(reject);
     });
     db=await database();library=await stored('readonly')||empty();
+    if(!library.legacySavesMigrated){
+      const databases=await indexedDB.databases();
+      if(databases.some(d=>d.name==='saves')){
+        const legacy=await new Promise((resolve,reject)=>{const r=indexedDB.open('saves');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});
+        if(legacy.objectStoreNames.contains('files')){
+          const records=await new Promise((resolve,reject)=>{const r=legacy.transaction('files').objectStore('files').getAll();r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});
+          await new Promise((resolve,reject)=>{const tx=db.transaction('files','readwrite'),store=tx.objectStore('files');for(const record of records.filter(r=>validSaveKey(r.key))){const request=store.get(record.key);request.onsuccess=()=>{if(!request.result)store.put(record);};}tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);});
+        }
+        legacy.close();
+      }
+      library.legacySavesMigrated=true;await save();
+    }
     window.addEventListener('pagehide',()=>{player=null;releaseTab?.();});
     window.addEventListener('pageshow',event=>{if(event.persisted)location.reload();});
   })();
@@ -121,7 +135,11 @@ export async function readRom(id){
 }
 export async function exportBackup(){
   await init();
-  return {format:'games-reducer-backup',version:1,exportedAt:new Date().toISOString(),current:library.games.find(g=>g.id===library.current)?identity(game(library.current)):null,games:[...library.games,...library.pending.filter(p=>!library.games.some(g=>identity(g)===identity(p)))].map(g=>({system:g.system,relative_path:g.relative_path,size:g.size,title:g.title,status:g.status,seconds:g.seconds,metadata:safeMetadata(g.metadata)}))};
+  const records=await new Promise((resolve,reject)=>{const r=db.transaction('files').objectStore('files').getAll();r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});
+  const encode=bytes=>{let text='';for(let i=0;i<bytes.length;i+=8192)text+=String.fromCharCode(...bytes.subarray(i,i+8192));return btoa(text);};
+  const saves=records.filter(r=>validSaveKey(r.key)).map(r=>({key:r.key,files:Object.fromEntries(Object.entries(r.data).map(([ext,bytes])=>[ext,encode(new Uint8Array(bytes))]))}));
+  const backup={format:'games-reducer-backup',version:2,exportedAt:new Date().toISOString(),saves,current:library.games.find(g=>g.id===library.current)?identity(game(library.current)):null,games:[...library.games,...library.pending.filter(p=>!library.games.some(g=>identity(g)===identity(p)))].map(g=>({system:g.system,relative_path:g.relative_path,size:g.size,title:g.title,status:g.status,seconds:g.seconds,metadata:safeMetadata(g.metadata)}))};
+  validateBackup(backup);return backup;
 }
 export async function importBackup(input){
   const backup=validateBackup(input);await init();idle();
@@ -130,8 +148,19 @@ export async function importBackup(input){
   const pending=new Map(library.pending.map(g=>[identity(g),g]));for(const [key,g]of records)pending.set(key,g);
   const next={...library,games,pending:[...pending.values()],history:[],pendingCurrent:backup.current,current:games.find(g=>identity(g)===backup.current)?.id||library.current};
   // Commit the whole import at once; malformed backups never partially apply.
-  await stored('readwrite',next);library=next;preview=null;
-  return {matched,pending:records.size};
+  await new Promise((resolve,reject)=>{
+    const tx=db.transaction(['library','files'],'readwrite');tx.objectStore('library').put(next,'state');
+    for(const record of backup.saves)tx.objectStore('files').put({key:record.key,data:Object.fromEntries(Object.entries(record.files).map(([ext,text])=>[ext,Uint8Array.from(atob(text),c=>c.charCodeAt(0))]))});
+    tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||new Error('Backup import was aborted.'));
+  });library=next;preview=null;
+  return {matched,pending:records.size,saves:backup.saves.length};
+}
+export async function readCartridgeSave(key){
+  await init();return new Promise((resolve,reject)=>{const r=db.transaction('files').objectStore('files').get(key);r.onsuccess=()=>resolve(r.result?.data||{});r.onerror=()=>reject(r.error);});
+}
+export async function writeCartridgeSave(key,data){
+  await init();if(!validSaveKey(key))throw new Error('Invalid cartridge save key.');
+  await new Promise((resolve,reject)=>{const tx=db.transaction('files','readwrite');tx.objectStore('files').put({key,data});tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);});
 }
 async function cleanup(token){
   idle();if(!preview||preview.token!==token||preview.expires<Date.now())throw new Error('Cleanup preview expired. Open Finish session again.');
@@ -170,7 +199,7 @@ export function browserApi(path,body){
 }
 async function dispatch(path,body){
   await init();
-  if(path==='/state')return {root:library.root?.name||'',connected:!!library.root,trash:library.trash?.name||'',currentId:library.current,metadataConfigured:false,systems:SYSTEMS,stats:[],playerActive:!!player};
+  if(path==='/state'){const saveCount=await new Promise((resolve,reject)=>{const r=db.transaction('files').objectStore('files').count();r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});return {root:library.root?.name||'',connected:!!library.root,trash:library.trash?.name||'',currentId:library.current,metadataConfigured:false,systems:SYSTEMS,stats:[],saveCount,playerActive:!!player};}
   if(path==='/games')return library.games.map(publicGame);
   if(path==='/scan')return scanFolder(body?.handle);
   if(path==='/current'){if(body.id){game(body.id);library.current=body.id;await save();}return {ok:true};}
