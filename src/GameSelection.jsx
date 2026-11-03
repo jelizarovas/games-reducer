@@ -1,5 +1,5 @@
-import {useEffect,useMemo,useRef,useState} from 'react';
-import {Check,Minus,Square,CheckSquare,FlipHorizontal2} from 'lucide-react';
+import {useEffect,useLayoutEffect,useMemo,useRef,useState} from 'react';
+import {Check,Minus,Square,CheckSquare,FlipHorizontal2,Trash2,SkipForward} from 'lucide-react';
 import {Dropdown} from './Dropdown';
 
 export function useGameSelection(games){
@@ -28,12 +28,30 @@ export function useGameSelection(games){
     })};
 }
 
-export function SelectionToolbar({selection}){
+export function SelectionToolbar({selection,onDecide,busy=false}){
   const {count,total}=selection,all=total>0&&count===total;
   return <div className="selection-toolbar" onKeyDown={e=>e.stopPropagation()} onKeyUp={e=>e.stopPropagation()}>
-    <button className="selection-toggle" role="checkbox" aria-label={`Select games (${count} selected)`} aria-checked={all?true:count?'mixed':false} disabled={!total} title={count?`${count} selected — clear selection`:'Select all filtered games'} onClick={()=>count?selection.clear():selection.all()}><span className="selection-box">{all?<Check size={14}/>:count?<Minus size={14}/>:null}</span>{count>0&&<span className="selection-count">{count>99?'99+':count}</span>}</button>
-    <Dropdown menu label="Selection actions" width={200} triggerClassName="selection-menu" options={[{value:'all',label:'Select all',icon:<CheckSquare size={16}/>,disabled:!total,onSelect:selection.all},{value:'clear',label:'Clear selection',icon:<Square size={16}/>,disabled:!count,onSelect:selection.clear},{value:'invert',label:'Invert selection',icon:<FlipHorizontal2 size={16}/>,disabled:!total,onSelect:selection.invert}]}/>
+    <button className="selection-toggle" role="checkbox" aria-label={`Select games (${count} selected)`} aria-checked={all?true:count?'mixed':false} disabled={!total} title={count?`${count} selected — clear selection`:'Select all filtered games'} onClick={()=>count?selection.clear():selection.all()}><span className="selection-box">{all?<Check size={14}/>:count?<Minus size={14}/>:null}</span><SelectionCount count={count}/></button>
+    <Dropdown menu label="Selection actions" width={200} triggerClassName="selection-menu" options={[...(count?[{value:'keep',label:'Keep selected',icon:<Check size={16}/>,disabled:busy,onSelect:()=>onDecide('keep')},{value:'discard',label:'Mark selected for removal',icon:<Trash2 size={16}/>,disabled:busy,onSelect:()=>onDecide('discard')},{value:'skip',label:'Skip selected',icon:<SkipForward size={16}/>,disabled:busy,onSelect:()=>onDecide('skip')}]:[]),{value:'all',label:'Select all',icon:<CheckSquare size={16}/>,disabled:!total,onSelect:selection.all},{value:'clear',label:'Clear selection',icon:<Square size={16}/>,disabled:!count,onSelect:selection.clear},{value:'invert',label:'Invert selection',icon:<FlipHorizontal2 size={16}/>,disabled:!total,onSelect:selection.invert}]}/>
     <span className="selection-announcement" role="status">{count} games selected</span>
   </div>;
 }
 export const SelectionMark=({checked})=><span className={`game-selection-mark ${checked?'checked':''}`} aria-hidden="true">{checked&&<Check size={14}/>}</span>;
+
+function SelectionCount({count}){
+  const [last,setLast]=useState(count),badge=useRef(null),animation=useRef(null);
+  useLayoutEffect(()=>{
+    const node=badge.current,previous=animation.current;
+    if(!node)return;
+    const style=getComputedStyle(node),from={transform:style.transform,opacity:style.opacity};
+    previous?.cancel();animation.current=null;
+    if(count)setLast(count);
+    if(matchMedia('(prefers-reduced-motion: reduce)').matches){if(!count)setLast(0);return;}
+    const frames=count?[previous?from:{transform:'scale(.65)',opacity:0},{transform:'scale(1)',opacity:1}]:[from,{transform:'scale(1.12)',opacity:1,offset:.3},{transform:'scale(0)',opacity:0}];
+    const running=node.animate(frames,{duration:count?220:260,easing:'ease-out',fill:'both'});animation.current=running;
+    running.onfinish=()=>{if(animation.current!==running)return;animation.current=null;if(!count)setLast(0);else running.cancel();};
+  },[count]);
+  useEffect(()=>()=>animation.current?.cancel(),[]);
+  const value=count||last;
+  return value?<span ref={badge} className="selection-count" aria-hidden="true"><span key={value}>{value>99?'99+':value}</span></span>:null;
+}

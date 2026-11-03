@@ -14,6 +14,7 @@ export function SessionMenu({onFinish,onUndo,onController,onSettings,onShortcuts
     <small>{playTime(summary.seconds)} played · {saveCount} cartridge saves{summary.missing>0?` · ${summary.missing} missing`:''}</small>
   </div>;
   return <Dropdown label="More actions" menu triggerClassName="overflow-trigger" width={288} maxHeight={560} panelHeader={progress} onOpen={onRefresh} options={[
+    ...(pwa.update?[{value:'update',label:'Update available',icon:<Settings2 size={17}/>,onSelect:onSettings}]:[]),
     {value:'games',label:'Games library',icon:<LayoutGrid size={17}/>,onSelect:()=>onNavigate('games')},
     {value:'player',label:'Player',icon:<Play size={17}/>,onSelect:()=>onNavigate('player')},
     {value:'undo',label:'Undo last decision',icon:<RotateCcw size={17}/>,disabled:busy,onSelect:onUndo},
@@ -22,5 +23,5 @@ export function SessionMenu({onFinish,onUndo,onController,onSettings,onShortcuts
     {value:'shortcuts',label:'Keyboard shortcuts',icon:<Keyboard size={17}/>,onSelect:onShortcuts},
     ...(pwa.installable?[{value:'install',label:'Install app',onSelect:installPwa}]:[]),
     {value:'finish',label:'Finish session',icon:<LogOut size={17}/>,disabled:busy,onSelect:onFinish},
-  ]}><Ellipsis size={21}/></Dropdown>;
+  ]}><Ellipsis size={21}/>{pwa.update&&<span className="update-notice-dot" aria-label="Update available"/>}</Dropdown>;
 }

@@ -53,3 +53,21 @@ main{padding:0}.game-stage{border-radius:0}.game-stage,.stage-body,.screen,.prev
 .game-row,.catalog-card{position:relative;user-select:none;-webkit-touch-callout:none}.game-row[aria-disabled=true],.catalog-card[aria-disabled=true]{opacity:.5}.game-row.batch-selected,.catalog-card.batch-selected{background:#34445e;box-shadow:inset 0 0 0 2px var(--accent)}.game-selection-mark.checked{background:var(--accent);border-color:var(--accent);color:#142033}.catalog-card .game-selection-mark,.sidebar-grid .game-selection-mark{position:absolute;top:6px;left:6px;z-index:1;background:var(--panel,#1b1e24)}.catalog-card .game-selection-mark.checked,.sidebar-grid .game-selection-mark.checked{background:var(--accent)}.search:has(.selection-toolbar){gap:3px;padding-left:4px}.catalog-card.batch-selected .catalog-play{display:none}
 
 .catalog-search-row{display:flex;align-items:center;gap:8px;flex:1;min-width:0}.catalog-search-row .catalog-search{min-width:0}.catalog-search-row input{min-width:0}@media(max-width:900px){.catalog-search-row{flex-basis:100%}.catalog-search-row .catalog-search{flex-basis:auto}}
+
+.overflow-trigger{position:relative}.update-notice-dot{position:absolute;right:2px;top:1px;width:7px;height:7px;border-radius:50%;background:var(--accent)}.selection-box{border-color:var(--text,#e4e7ed);border-width:2px}
+
+/* Selection overlays never participate in row or cover layout. */
+.row-art,.catalog-art{position:relative}
+.game-row .game-selection-mark,.catalog-card .game-selection-mark{position:absolute;top:2px;left:2px;z-index:2;width:17px;height:17px;background:var(--surface);box-shadow:0 1px 3px #0008;pointer-events:none}
+.game-row .game-selection-mark.checked,.catalog-card .game-selection-mark.checked{background:var(--accent)}
+.game-row.batch-selected,.catalog-card.batch-selected{box-shadow:none}
+.game-selection-mark.checked svg,.selection-box svg{animation:selection-check-reveal 180ms ease-out both}
+.selection-count{top:2px;right:0;min-width:16px;height:16px;line-height:16px;padding:0 3px;font-size:10px;overflow:hidden;pointer-events:none;font-variant-numeric:tabular-nums;z-index:3}
+.selection-count>span{display:block;animation:selection-count-roll 260ms ease-out both}
+@keyframes selection-check-reveal{from{clip-path:inset(0 100% 0 0)}to{clip-path:inset(0)}}
+@keyframes selection-count-roll{from{transform:translateY(16px)}to{transform:translateY(0)}}
+/* Keyboard focus uses a surface tint instead of an outline. */
+:where(button,input,textarea,select,a,[tabindex],[role=button]):is(:focus,:focus-visible){outline:none!important}
+.console-picker:has(select:focus-visible),.select-icon:has(select:focus-visible){outline:none}
+button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{box-shadow:inset 0 0 0 100vmax #a9c7ff1c}
+@media(prefers-reduced-motion:reduce){.game-selection-mark.checked svg,.selection-box svg,.selection-count>span{animation:none}}

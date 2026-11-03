@@ -33,7 +33,7 @@ export function GameList({selection,games,selected,onPlay,busy,loading,resetKey,
   return <div className={`game-list virtual-list sidebar-${view}`} style={{'--list-columns':columns,'--list-item-size':itemSize+'px'}} ref={viewport} onScroll={e=>setOffset(horizontal?e.currentTarget.scrollLeft:e.currentTarget.scrollTop)}>
     <div className="list-spacer" aria-hidden="true" style={spacer(start)}/>
     {games.slice(start*columns,end*columns).map(game=><button key={game.id} className={`game-row ${selected===game.id?'selected':''} ${selection.selected.has(game.id)?'batch-selected':''}`} aria-label={game.title} aria-current={selected===game.id?'true':undefined} title={isBlocked(game)?game.compatibility.reason:game.title} disabled={busy||loading} aria-disabled={!selection.count&&(game.missing||isBlocked(game))||undefined} {...selection.bindings(game,onPlay,game.missing||isBlocked(game))}>
-      {selection.count>0&&<SelectionMark checked={selection.selected.has(game.id)}/>}<span className="row-art"><Gamepad2 size={22}/><img loading="lazy" src={thumbnail(game)} alt="" onError={e=>{e.currentTarget.hidden=true;}}/></span>
+      <span className="row-art">{selection.count>0&&<SelectionMark checked={selection.selected.has(game.id)}/>}<Gamepad2 size={22}/><img loading="lazy" src={thumbnail(game)} alt="" onError={e=>{e.currentTarget.hidden=true;}}/></span>
       <span className="row-copy"><span className="row-title">{game.title}</span><small className="row-meta" title={cardDetails(game)}>{cardDetails(game)}</small></span>
       {game.status==='keep'&&<Check size={16} className="green"/>}{game.status==='discard'&&<Trash2 size={15} className="red"/>}
     </button>)}

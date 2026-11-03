@@ -1,3 +1,4 @@
+import {batchDecision,pruneReviewHistory} from './review-batch';
 import {SYSTEMS,LIMIT,statuses,cleanTitle,extension,safePath,identity,safeMetadata,decodeRom,validateBackup,validSaveKey} from './browser-core';
 import {assetUrl} from './assets';
 import {COMPATIBILITY_VERSION,inspectNesFile,isBlocked,compatibilityReport} from './nes-compatibility';
@@ -196,7 +197,7 @@ async function cleanup(token){
       let parent=root;for(const part of parts.slice(0,-1))parent=await parent.getDirectoryHandle(part);
       if(!await(await parent.getFileHandle(parts.at(-1))).isSameEntry(g.handle))throw new Error('Source path changed. Original kept.');
       await parent.removeEntry(parts.at(-1));
-      library.games=library.games.filter(entry=>entry.id!==g.id);library.history=library.history.filter(entry=>entry.id!==g.id);library.pending=library.pending.filter(entry=>identity(entry)!==identity(g));
+      library.games=library.games.filter(entry=>entry.id!==g.id);library.history=pruneReviewHistory(library.history,[g.id]);library.pending=library.pending.filter(entry=>identity(entry)!==identity(g));
       library.receipts.at(-1).state='moved';await save();results.push({id:g.id,ok:true});
     }catch(error){results.push({id:item.id,ok:false,error:error.message});}
   }
@@ -224,15 +225,16 @@ async function dispatch(path,body){
   if(path==='/player/start'){if(player)throw new Error('A game is already running.');const g=game(body.id);await permission(library.root);if(g.missing)throw new Error('ROM is missing. Rescan your folder.');if(g.system==='nes'){const file=await g.handle.getFile();g.compatibility=await inspectNesFile(file);await save();if(isBlocked(g))throw new Error(g.compatibility.reason);}player={id:g.id,lastTick:Date.now()};library.current=g.id;await save();return {ok:true};}
   if(path==='/player/stop'){player=null;return {ok:true};}
   if(path==='/player/tick'){if(player?.id===body.id){const now=Date.now();if(body.playing)game(body.id).seconds+=Math.min(10,Math.floor((now-player.lastTick)/1000));player.lastTick=now;await save();}return {ok:true};}
+  if(path==='/games/decisions'){const result=batchDecision(library,body?.ids,body?.status,player?.id);await stored('readwrite',result.next);library=result.next;preview=null;return {count:result.count};}
   const decision=path.match(/^\/games\/([^/]+)\/decision$/);
   if(decision){idle();if(!statuses.includes(body.status))throw new Error('Invalid review status.');const g=game(decision[1]);library.history.push({id:g.id,before:g.status});g.status=body.status;preview=null;await save();return publicGame(g);}
-  if(path==='/undo'){const last=library.history.pop();if(!last)return null;const g=game(last.id);g.status=last.before;preview=null;await save();return publicGame(g);}
+  if(path==='/undo'){const last=library.history.pop();if(!last)return null;if(last.batch){for(const item of last.batch)game(item.id).status=item.before;preview=null;await save();return {bulk:true,count:last.batch.length};}const g=game(last.id);g.status=last.before;preview=null;await save();return publicGame(g);}
   if(path==='/cleanup/preview'){idle();const games=library.games.filter(g=>g.status==='discard').map(publicGame);preview={token:crypto.randomUUID(),expires:Date.now()+600000,games};return {...preview,bytes:games.reduce((n,g)=>n+g.size,0),trash:library.trash?.name||'a trash folder you choose'};}
   if(path==='/cleanup/execute')return cleanup(body.token);
   if(path==='/missing/clear'){
     idle();await permission(library.root);const removable=[];
     for(const g of library.games.filter(g=>g.missing)){try{await g.handle.getFile();}catch(error){if(error.name==='NotFoundError')removable.push(g.id);else throw error;}}
-    library.games=library.games.filter(g=>!removable.includes(g.id));library.history=library.history.filter(h=>!removable.includes(h.id));preview=null;await save();return {count:removable.length};
+    library.games=library.games.filter(g=>!removable.includes(g.id));library.history=pruneReviewHistory(library.history,removable);preview=null;await save();return {count:removable.length};
   }
   throw new Error('This action is not available in the browser edition.');
 }

@@ -85,6 +85,19 @@ try{
   await page.mouse.move(rowBox.x+20,rowBox.y+20);await page.mouse.down();await page.mouse.move(rowBox.x+60,rowBox.y+25);await page.waitForTimeout(650);await page.mouse.up();await selectionCount(0);assert.equal(await page.getByRole('button',{name:'Stop game',exact:true}).count(),0);
   const touch=await context.newCDPSession(page);await touch.send('Emulation.setTouchEmulationEnabled',{enabled:true});await touch.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:rowBox.x+20,y:rowBox.y+20}]});await page.waitForTimeout(650);await touch.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await selectionCount(1);await touch.send('Emulation.setTouchEmulationEnabled',{enabled:false});await touch.detach();await selectAction('Clear selection');
   console.log('PASS shift/range selection, mouse and touch long press, drag cancellation, select-all/clear/invert without launch');
+  const undoBatch=async()=>{await page.getByRole('button',{name:'More actions',exact:true}).click();await page.getByRole('menuitem',{name:'Undo last decision',exact:true}).click();await rows.first().waitFor();};
+  const beforeGeometry=await rows.first().locator('.row-copy').boundingBox();
+  await selectAction('Select all');
+  assert.deepEqual(await rows.first().locator('.row-copy').boundingBox(),beforeGeometry,'Selection must not shift titles');
+  const art=await rows.first().locator('.row-art').boundingBox(),mark=await rows.first().locator('.game-selection-mark').boundingBox();assert.ok(mark.x>=art.x&&mark.y>=art.y&&mark.x+mark.width<=art.x+art.width&&mark.y+mark.height<=art.y+art.height,'Checkmark is inside cover');
+  await page.getByRole('textbox',{name:'Find a game',exact:true}).focus();assert.equal(await page.getByRole('textbox',{name:'Find a game',exact:true}).evaluate(el=>getComputedStyle(el).outlineStyle),'none');
+  await page.screenshot({path:path.join(run,'selection-overlay.png')});await selectAction('Clear selection');
+  for(const [action,status] of [['Keep selected','keep'],['Mark selected for removal','discard'],['Skip selected','skip']]){
+    await selectAction('Select all');await selectAction(action);await page.waitForFunction(()=>document.querySelector('.selection-toggle')?.getAttribute('aria-label')==='Select games (0 selected)');
+    const saved=await store();assert.equal(saved.games.length,3);assert.ok(saved.games.every(g=>g.status===status));assert.equal(saved.history.at(-1).batch.length,3);
+    await undoBatch();assert.ok((await store()).games.every(g=>g.status==='unreviewed'));
+  }
+  console.log('PASS bulk keep/remove/skip, grouped undo, cover overlays without layout shifts, outline-free input');
   const order=['megadrive','snes','nes'];
   // Review handoff must run the next game, not merely change the header/phase.
   await page.getByRole('button',{name:data.games.find(g=>g.system==='snes').title,exact:true}).click();await playing();
@@ -92,6 +105,8 @@ try{
   await page.frames().find(f=>f.url().includes('/play.html')).waitForFunction(()=>window.reducerRuntimeState().renderedFrames>120&&!window.reducerRuntimeState().paused,{},{timeout:30000});
   const nextEngine=page.frames().find(f=>f.url().includes('/play.html'));assert.equal(await page.evaluate(()=>document.activeElement.tagName),'IFRAME');assert.equal(await nextEngine.evaluate(()=>document.activeElement.tagName),'CANVAS');
   await page.locator('.game-row').last().click({modifiers:['Shift']});await selectionCount(1);assert.ok(page.frames().includes(nextEngine));await playing();await selectAction('Clear selection');await nextEngine.locator('canvas').focus();
+  const otherTitle=data.games.find(g=>g.system==='nes').title;
+  await page.getByRole('button',{name:otherTitle,exact:true}).click({modifiers:['Shift']});await selectAction('Skip selected');await playing();assert.ok(page.frames().includes(nextEngine),'Bulk review of other games preserves running emulator');await undoBatch();await playing();await nextEngine.locator('canvas').focus();
   await nextEngine.evaluate(()=>{window.keysObserved=[];document.querySelector('canvas').addEventListener('keydown',e=>window.keysObserved.push(e.code));});
   for(const key of ['KeyZ','KeyX','KeyC','KeyA','KeyS','KeyD'])await page.keyboard.press(key);
   assert.deepEqual(await nextEngine.evaluate(()=>window.keysObserved),['KeyA','KeyS','KeyD','KeyQ','KeyW','KeyE']);

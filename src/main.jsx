@@ -154,12 +154,23 @@ function App() {
     } catch (e) { setError(e.message); }
     finally { setBusy(false); starting.current = false; }
   }
+  async function decideSelected(status){
+    if(busy||starting.current||!selection.count)return;
+    const ids=[...selection.selected];setBusy(true);setError('');
+    try{
+      if(activeGame.current&&ids.includes(activeGame.current.id))await stopPlayer();
+      const result=await api('/games/decisions',{ids,status});const {all}=await refresh();selection.clear();
+      if(!activeGame.current&&ids.includes(selected))setSelected(sortGames(all.filter(g=>canQueue(g)&&matchesConsole(g,system)&&matchesCategory(g,category)&&matchesLanguage(g,language)&&(filter==='all'||g.status===filter)&&g.title.toLowerCase().includes(query.toLowerCase())),sort)[0]?.id);
+      setNotice(`${result.count} games ${status==='keep'?'kept':status==='discard'?'marked for removal':'saved for later'}.`);
+    }catch(e){setError(e.message);}finally{setBusy(false);}
+  }
   async function undo() {
     if (busy) return;
     setBusy(true);
     try {
       const game = await api('/undo', {});
-      if (game) { await refresh(); if(!playing){setSystem(game.system); setFilter('all'); setCategory('all'); setSelected(game.id);} setNotice(`Undid the decision for ${game.title}.`); }
+      if(game?.bulk){await refresh();setNotice(`Undid the decisions for ${game.count} games.`);}
+      else if (game) { await refresh(); if(!playing){setSystem(game.system); setFilter('all'); setCategory('all'); setSelected(game.id);} setNotice(`Undid the decision for ${game.title}.`); }
       else setNotice('No decisions to undo yet.');
     } catch (e) { setError(e.message); }
     finally {setBusy(false);}
@@ -426,12 +437,12 @@ function App() {
         <SessionMenu onShortcuts={toggleShortcuts} games={games} saveCount={state?.saveCount} onRefresh={()=>refresh().catch(e=>setError(e.message))} onNavigate={navigate} onFinish={finish} onUndo={undo} onController={()=>openPanel('controller')} onSettings={()=>openPanel('settings')} busy={busy}/>
       </div>
     </header>
-    {route==='games'&&<GamesPage selection={selection} games={visible} query={query} onQuery={setQuery} filter={filter} onFilter={chooseFilter} category={category} onCategory={chooseCategory} categories={categoryOptions} language={language} onLanguage={chooseLanguage} languages={languages} sort={sort} onSort={setSort} onPlay={playGame} busy={busy} onSettings={()=>openPanel('settings')}/>}
+    {route==='games'&&<GamesPage onDecide={decideSelected} selection={selection} games={visible} query={query} onQuery={setQuery} filter={filter} onFilter={chooseFilter} category={category} onCategory={chooseCategory} categories={categoryOptions} language={language} onLanguage={chooseLanguage} languages={languages} sort={sort} onSort={setSort} onPlay={playGame} busy={busy} onSettings={()=>openPanel('settings')}/>}
     {route!=='player'&&error&&!modal&&<div className="alert error" role="alert">{error}<button aria-label="Dismiss error" onClick={()=>setError('')}><X size={16}/></button></div>}
     <div className={`workspace ${sidebarHidden?'sidebar-hidden':''}`} hidden={route!=='player'}>
       <aside id="game-library" className="sidebar" aria-label="Game library" hidden={sidebarHidden}>
         <div className="library-tools">
-          <div className="library-search"><div className="search" data-shortcut="Alt+K"><SelectionToolbar selection={selection}/><Search size={17}/><input placeholder="Search games" aria-label="Find a game" value={query} onChange={e => setQuery(e.target.value)}/>
+          <div className="library-search"><div className="search" data-shortcut="Alt+K"><SelectionToolbar selection={selection} onDecide={decideSelected} busy={busy}/><Search size={17}/><input placeholder="Search games" aria-label="Find a game" value={query} onChange={e => setQuery(e.target.value)}/>
             <Dropdown showArrow={false} label="Sort games" value={sort} onChange={setSort} triggerClassName="search-dropdown" options={[{value:'title',label:'Title A–Z'},{value:'title-desc',label:'Title Z–A'},{value:'year',label:'Oldest first'},{value:'year-desc',label:'Newest first'}]}><ArrowDownUp size={17}/></Dropdown>
             <FilterMenu filter={filter} onFilter={chooseFilter} category={category} onCategory={chooseCategory} categories={categoryOptions} language={language} onLanguage={chooseLanguage} languages={languages}/>
             <button data-shortcut="Alt+V" className="icon-button sidebar-view-toggle" aria-label={sidebarView==='list'?'Show grid view':'Show list view'} title={sidebarView==='list'?'Grid view':'List view'} onClick={()=>setSidebarView(value=>value==='list'?'grid':'list')}>{sidebarView==='list'?<LayoutGrid size={17}/>:<List size={17}/>}</button>

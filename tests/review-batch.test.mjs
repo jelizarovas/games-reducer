@@ -1,0 +1,7 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import {batchDecision,pruneReviewHistory} from '../src/review-batch.js';
+const library=()=>({games:[{id:'a',status:'unreviewed'},{id:'b',status:'skip'},{id:'c',status:'keep'}],history:[],current:'c'});
+for(const status of ['keep','discard','skip'])test(`bulk ${status} updates only chosen games with one undo group`,()=>{const before=library(),snapshot=structuredClone(before),{next,count}=batchDecision(before,['a','b','a'],status,'c');assert.deepEqual(before,snapshot);assert.deepEqual(next.games.map(g=>g.status),[status,status,'keep']);assert.equal(count,status==='skip'?1:2);assert.equal(next.history.length,1);for(const item of next.history[0].batch)next.games.find(g=>g.id===item.id).status=item.before;assert.deepEqual(next.games,before.games);});
+test('invalid batches and selected running games fail before changing data',()=>{const before=library();for(const args of [[['a','missing'],'keep'],[['a'],'invalid'],[[],'keep'],[['c'],'discard','c']])assert.throws(()=>batchDecision(before,...args));assert.deepEqual(before,library());});
+test('unchanged batches add no undo and removal prunes grouped history',()=>{const before=library();assert.equal(batchDecision(before,['c'],'keep').next.history.length,0);assert.deepEqual(pruneReviewHistory([{id:'a',before:'skip'},{batch:[{id:'a',before:'keep'},{id:'b',before:'skip'}]}],['a']),[{batch:[{id:'b',before:'skip'}]}]);});
