@@ -28,7 +28,13 @@ const InlinePlayer = forwardRef(function Player({ game, paused, muted, onLoaded,
   }
   const callbacks = useRef({}); callbacks.current = { onLoaded, onReview, onError, onFullscreen, onFastForward,onShortcutHints,onShortcuts,onShortcut };
   const send = message => frame.current?.contentWindow?.postMessage({ source: 'games-reducer', ...message }, location.origin);
+  const stateRequest=(type,state)=>new Promise((resolve,reject)=>{
+    if(!frame.current?.contentWindow?.reducerRuntimeState?.().worker){reject(new Error('Save states require a current version of Edge or Chrome.'));return;}
+    const requestId=crypto.randomUUID(),timer=setTimeout(()=>{requests.current.delete(requestId);reject(new Error('Save-state operation timed out.'));},12000);requests.current.set(requestId,{resolve,reject,timer});send({type,requestId,state});
+  });
   useImperativeHandle(ref, () => ({
+    saveState(){return stateRequest('capture-state');},
+    loadState(state){return stateRequest('restore-state',state);},
     getDiagnostics(){if(game.system==='nes')return {frames:Number(container.current?.dataset.frames||0),speed:speed.current,audio:nes.current?._speakers.stats};const runtime=frame.current?.contentWindow?.reducerRuntimeState?.();return runtime?{frames:runtime.renderedFrames,speed:runtime.speed,audio:runtime.audioHealth,worker:runtime.worker,timestamp:runtime.timestamp}:null;},
     focus(){if(game.system==='nes'){const canvas=container.current?.querySelector('canvas');if(canvas){canvas.tabIndex=0;canvas.focus();}}else frame.current?.contentWindow?.document.querySelector('canvas')?.focus();},
     async flushSaves(){
@@ -112,6 +118,7 @@ const InlinePlayer = forwardRef(function Player({ game, paused, muted, onLoaded,
       }
       if (message.type === 'loaded') { loaded = true; callbacks.current.onLoaded(); }
       if(message.type==='saves-flushed'){const request=requests.current.get(message.requestId);if(request){clearTimeout(request.timer);requests.current.delete(message.requestId);message.error?request.reject(new Error(message.error)):request.resolve();}}
+      if(message.type==='state-result'){const request=requests.current.get(message.requestId);if(request){clearTimeout(request.timer);requests.current.delete(message.requestId);message.error?request.reject(new Error(message.error)):request.resolve(message.state);}}
       if (message.type === 'review') callbacks.current.onReview();
       if(message.type==='shortcut-hints')callbacks.current.onShortcutHints?.(message.held);
       if(message.type==='shortcuts')callbacks.current.onShortcuts?.();
@@ -122,7 +129,7 @@ const InlinePlayer = forwardRef(function Player({ game, paused, muted, onLoaded,
     };
     window.addEventListener('message', listener);
     const timeout = setTimeout(() => { if (!loaded) callbacks.current.onError('The emulator did not start within 25 seconds. Try another ROM, or check browser graphics support.'); }, 25000);
-    return () => { cancelled = true; window.removeEventListener('message', listener); clearTimeout(timeout); };
+    return () => { cancelled = true; window.removeEventListener('message', listener); clearTimeout(timeout); for(const r of requests.current.values()){clearTimeout(r.timer);r.reject(new Error('Game closed before save completed.'));}requests.current.clear(); };
   }, [game.id]);
   useEffect(() => {
     if (paused) {

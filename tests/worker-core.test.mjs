@@ -22,3 +22,22 @@ for(const [system,fixture,key]of [['megadrive',genesisFixture,'ArrowUp'],['snes'
  });
  test(`${system} retains PAL pacing instead of forcing 60Hz`,()=>{const core=new WorkerCore(system,fixture(true),48000,'{}');try{core.frame();assert.ok(core.fps()>49&&core.fps()<51);}finally{core.free();}});
 }
+
+for(const [system,fixture,key]of [['megadrive',genesisFixture,'ArrowUp'],['snes',snesFixture,'KeyX']]){
+ test(`${system} snapshots restore CPU execution, battery RAM and device-rate audio`,()=>{
+  const core=new WorkerCore(system,fixture(),48000,'{}');const other=new WorkerCore(system,fixture(),44100,'{}');
+  try{
+   for(let i=0;i<10;i++)core.frame();core.take_audio();const initial=JSON.parse(core.take_saves()).sav;
+   const saved=core.save_state();assert.ok(saved.length>1000&&saved.length<10000000);
+   core.key(key,true,1);for(let i=0;i<5;i++)core.frame();assert.notEqual(JSON.parse(core.take_saves()).sav[0],initial[0]);
+   core.load_state(saved);assert.deepEqual(JSON.parse(core.take_saves()).sav,initial,'Battery state rolls back');
+   for(let i=0;i<5;i++)core.frame();assert.deepEqual(JSON.parse(core.take_saves()),{},'Restoring resumes CPU after boot rather than rebooting the cartridge');
+   const stable=core.save_state();for(const bad of [new Uint8Array([1,2,3]),saved.subarray(0,100),new Uint8Array(saved.length)]){assert.throws(()=>core.load_state(bad));assert.deepEqual(core.save_state(),stable,'Invalid snapshots leave the current machine intact');}
+   other.load_state(saved);other.take_saves();let samples=0;for(let i=0;i<60;i++){other.frame();const audio=other.take_audio();assert.ok(audio.every(Number.isFinite));samples+=audio.length/2;}
+   assert.ok(Math.abs(samples-44100*60/other.fps())<44100*.03,`${samples} restored audio samples`);assert.deepEqual(JSON.parse(other.take_saves()),{},'A portable state does not reboot');
+  }finally{core.free();other.free();}
+ });
+}
+test('native cores reject a snapshot for the other console',()=>{
+ const genesis=new WorkerCore('megadrive',genesisFixture(),48000,'{}'),snes=new WorkerCore('snes',snesFixture(),48000,'{}');try{genesis.frame();snes.frame();assert.throws(()=>snes.load_state(genesis.save_state()));assert.throws(()=>genesis.load_state(snes.save_state()));}finally{genesis.free();snes.free();}
+});

@@ -204,7 +204,7 @@ try{
   await page.getByRole('button',{name:'Stop game',exact:true}).click();await page.locator('.screen[data-phase=ready]').waitFor();
   assert.equal((await store()).games.find(g=>g.id===nes.id).status,'keep');
   await openSettings();const downloadEvent=page.waitForEvent('download');await page.getByRole('button',{name:'Export backup',exact:true}).click();const download=await downloadEvent;const backupPath=path.join(run,'progress.json');await download.saveAs(backupPath);const backup=JSON.parse(fs.readFileSync(backupPath,'utf8'));
-  assert.equal(backup.version,2);assert.equal(backup.saves.length,3);assert.equal(backup.saves.find(s=>s.key.endsWith('Legacy.sfc')).files.sav,'CQgH');assert.equal(backup.games.find(g=>g.system==='nes').status,'keep');assert.ok(!JSON.stringify(backup).includes('handle'));await closeDialog();
+  assert.equal(backup.version,3);assert.equal(backup.saves.length,3);assert.equal(backup.saves.find(s=>s.key.endsWith('Legacy.sfc')).files.sav,'CQgH');assert.equal(backup.games.find(g=>g.system==='nes').status,'keep');assert.ok(!JSON.stringify(backup).includes('handle'));await closeDialog();
   await page.goto(url+'games/');await page.getByRole('region',{name:'Games library',exact:true}).waitFor();
   await filterChoice('Review status','All games',true);assert.equal(await page.locator('.catalog-card').count(),3);
   await page.getByRole('textbox',{name:'Search library'}).fill('Sonic');assert.equal(await page.locator('.catalog-card').count(),1);await page.getByRole('textbox',{name:'Search library'}).fill('');

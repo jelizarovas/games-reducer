@@ -3,11 +3,11 @@
   "adapter": "engine-worker",
   "rust": "1.101.0-nightly (92ffebece 2026-10-28)",
   "wasmBindgen": "0.2.114",
-  "builtAt": "2026-11-03T15:21:54.766Z",
-  "wasmSHA256": "8b71248c55aa27a86cc05652e48e121a770c921d3dde0b33ef981c9f1667b3b7",
+  "builtAt": "2026-11-03T15:50:46.294Z",
+  "wasmSHA256": "ad4460bd3d144d0944674730d4ec65f3d12ed23800b34ae4abd78a2f95c026f5",
   "sourceSHA256": {
     "engine-worker/Cargo.toml": "304646befa6a45e43969ef9dae1882ebedab736281d90340fc49068feda8e518",
-    "engine-worker/src/lib.rs": "e8f148c06ff50bd4d463c9666a87504ae1be3cd9b133ca9d82c836c6cd8eb41c",
+    "engine-worker/src/lib.rs": "33a801d332ad8d53231c608d54a7cffa184ba1926c6acd5e30ba06fd15a69442",
     "vendor/jgenesis/Cargo.lock": "5ed986be2aa11ae92beaea0f03f6dcb42bd1a68b08ad50aaa7a1db6f2b3a0743",
     "vendor/jgenesis/backend/snes-core/src/api.rs": "d55cef57e46bab2a6be49640a577d43ea59341c942bf8c2e4b61a0740b50f9dd"
   },

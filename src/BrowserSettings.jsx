@@ -13,13 +13,13 @@ export function downloadJson(data,name){
 export function BrowserSettings({state,busy,onScan,onStop,onRefresh,onError,onFlush}){
   const input=useRef(null),[backup,setBackup]=useState(null),[message,setMessage]=useState(''),[working,setWorking]=useState(false);
   const disabled=busy||working;
-  async function exportData(){setWorking(true);try{await onFlush?.();downloadJson(await exportBackup(),`games-reducer-${new Date().toISOString().slice(0,10)}.json`);setMessage('Backup exported with cartridge saves.');}catch(e){onError(e.message);}finally{setWorking(false);}}
+  async function exportData(){setWorking(true);try{await onFlush?.();downloadJson(await exportBackup(),`games-reducer-${new Date().toISOString().slice(0,10)}.json`);setMessage('Backup exported with cartridge saves and save states.');}catch(e){onError(e.message);}finally{setWorking(false);}}
   async function readBackup(event){
     const file=event.target.files?.[0];event.target.value='';if(!file)return;
     try{if(file.size>128*1024*1024)throw new Error('Backup exceeds 128 MB.');const data=JSON.parse(await file.text());validateBackup(data);setBackup(data);setMessage('');}catch(e){setBackup(null);onError(e.message);}
   }
   async function restore(){
-    setWorking(true);try{await onStop();const result=await importBackup(backup);await onRefresh();setBackup(null);setMessage(`Restored ${result.matched} games and ${result.saves} cartridge saves. ${result.pending} will match after you choose and scan their ROM folder.`);}catch(e){onError(e.message);}finally{setWorking(false);}
+    setWorking(true);try{await onStop();const result=await importBackup(backup);await onRefresh();setBackup(null);setMessage(`Restored ${result.matched} games and ${result.saves} cartridge saves and ${result.states||0} save states. ${result.pending} will match after you choose and scan their ROM folder.`);}catch(e){onError(e.message);}finally{setWorking(false);}
   }
   return <>
     <PwaSettings onStop={onStop} onError={onError} busy={disabled}/>
@@ -30,8 +30,8 @@ export function BrowserSettings({state,busy,onScan,onStop,onRefresh,onError,onFl
     {state?.compatibility?.total>0&&<div className="settings-section"><h3>NES compatibility</h3><p>{state.compatibility.supported} supported · {state.compatibility.unsupported} unsupported · {state.compatibility.invalid} invalid · {state.compatibility.unchecked} unchecked</p><p className="help">Unsupported and invalid ROMs are hidden from game lists. After scanning, you can mark them for removal; files stay until cleanup. Header checks do not verify gameplay. Reconnect / rescan to check new or changed files.</p><button disabled={disabled} onClick={async()=>{try{downloadJson(await api('/compatibility/report'),'nes-compatibility.json');}catch(e){onError(e.message);}}}><Download size={17}/> Export compatibility report</button></div>}
     <div className="settings-section"><h3>Backups</h3><div className="settings-buttons"><button disabled={disabled} onClick={exportData}><Download size={17}/> Export backup</button><button disabled={disabled} onClick={()=>input.current.click()}><Upload size={17}/> Import backup</button></div>
       <input ref={input} type="file" accept=".json,application/json" hidden aria-label="Backup file" onChange={readBackup}/>
-      <p className="help">Includes review progress, metadata, and in-game cartridge saves. Save inside the game before exporting. ROMs and an exact paused-game snapshot are not included.</p>
-      {backup&&<div className="backup-confirm"><p>Import {backup.games.length.toLocaleString()} games and {backup.saves?.length||0} cartridge saves? Matching records and save files will be replaced. Other games stay unchanged.</p><div className="settings-buttons"><button disabled={disabled} onClick={restore}>Import these records</button><button disabled={disabled} onClick={()=>setBackup(null)}>Cancel import</button></div></div>}
+      <p className="help">Includes review progress, metadata, in-game cartridge saves, and saved state slots. Use Save states to capture your current position before exporting. The ROM files are not included.</p>
+      {backup&&<div className="backup-confirm"><p>Import {backup.games.length.toLocaleString()} games and {backup.saves?.length||0} cartridge saves and {backup.states?.length||0} save states? Matching records and save files will be replaced. Other games stay unchanged.</p><div className="settings-buttons"><button disabled={disabled} onClick={restore}>Import these records</button><button disabled={disabled} onClick={()=>setBackup(null)}>Cancel import</button></div></div>}
       {message&&<p role="status">{message}</p>}
     </div>
     <div className="settings-section"><h3>Trash folder</h3><p>{state?.trash||'Choose a destination before finishing a session.'}</p><button disabled={disabled} onClick={async()=>{try{await pickTrashFolder();await onRefresh();}catch(e){if(e.name!=='AbortError')onError(e.message);}}}><FolderOpen size={17}/> Choose trash folder</button><p className="help">Use a folder outside the ROM library. Cleanup copies and verifies each marked ROM before removing its original and review record.</p></div>

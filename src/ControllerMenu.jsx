@@ -1,7 +1,7 @@
-import { Maximize, Settings2, Download, RotateCcw, ChevronRight } from 'lucide-react';
+import { Maximize, Settings2, Download, RotateCcw, ChevronRight, Save } from 'lucide-react';
 import { consoleNames } from './library-view';
 
-export function ControllerMenu({ system, filter, onSystem, onFilter, onFullscreen, onSettings, onFetch, canFetch, onUndo, onFinish, onClose }) {
+export function ControllerMenu({ onSaveStates, canSaveStates, system, filter, onSystem, onFilter, onFullscreen, onSettings, onFetch, canFetch, onUndo, onFinish, onClose }) {
   return <div className="controller-menu">
     <p className="help">D-pad or left stick moves focus. A chooses. B returns to your games.</p>
     <h3>Console</h3>
@@ -15,6 +15,7 @@ export function ControllerMenu({ system, filter, onSystem, onFilter, onFullscree
       <button onClick={onFullscreen}><Maximize size={17}/> Toggle fullscreen view <span>L3</span></button>
       <button onClick={onUndo}><RotateCcw size={17}/> Undo last decision <span>Y</span></button>
       <button disabled={!canFetch} onClick={onFetch}><Download size={17}/> Fetch game information</button>
+      <button disabled={!canSaveStates} onClick={onSaveStates}><Save size={17}/> Save states</button>
       <button onClick={onSettings}><Settings2 size={17}/> Library settings</button>
       <button onClick={onFinish}>Finish session <ChevronRight size={17}/><span>Start</span></button>
     </div>

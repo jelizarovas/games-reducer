@@ -1,12 +1,13 @@
+import {packState,unpackState,sha256} from './save-state-codec';
 import {createNesFrameTimer as createFrameTimer} from './nes-frame-timer';
-let core,timer,canvas,ctx,port,speed=1,frames=0,drawn=0,lastReport=0,lastSave=0,desiredPaused=false,audioBuffered=null;
+let core,timer,canvas,ctx,port,speed=1,frames=0,drawn=0,lastReport=0,lastSave=0,desiredPaused=false,audioBuffered=null,romHash,system;
 function report(type='stats'){lastReport=performance.now();postMessage({type,frames,drawn,speed,timestamp:lastReport,aspect:core?.aspect()});}
 function saves(){return core?JSON.parse(core.take_saves()):{};}
 function pause(){timer?.stop();speed=1;core?.release_keys();report('paused');}
 self.onmessage=async({data})=>{
  try{
   if(data.type==='load'){
-   desiredPaused=data.paused;
+   desiredPaused=data.paused;system=data.system;romHash=await sha256(data.bytes);
    const {default:init,WorkerCore}=await import(/* @vite-ignore */data.base+'worker/reducer_worker.js');await init();
    core=new WorkerCore(data.system,data.bytes,data.sampleRate,JSON.stringify(Object.fromEntries(Object.entries(data.saved).map(([key,value])=>[key,Array.from(value)]))));
    canvas=data.canvas;ctx=canvas.getContext('2d',{alpha:false});port=data.port;port.onmessage=({data:health})=>{if(health.type==='health')audioBuffered=health.enabled&&health.primed?health.buffered:null;};
@@ -27,6 +28,11 @@ self.onmessage=async({data})=>{
   if(data.type==='pause'){desiredPaused=true;pause();}
   if(data.type==='resume'){desiredPaused=false;timer?.start();}
   if(data.type==='speed')speed=data.speed===3?3:1;
+  if(data.type==='capture-state'){desiredPaused=true;pause();const state=await packState(core.save_state(),system,romHash);postMessage({type:'state-result',requestId:data.requestId,state});}
+  if(data.type==='restore-state'){
+    desiredPaused=true;pause();const bytes=await unpackState(data.state,system,romHash);core.load_state(bytes);audioBuffered=null;timer.onWriteFrame();
+    postMessage({type:'state-result',requestId:data.requestId,files:saves()});
+  }
   if(data.type==='flush'){pause();postMessage({type:'flushed',requestId:data.requestId,files:saves()});}
- }catch(error){timer?.stop();postMessage({type:'error',message:error.message||String(error)});}
+ }catch(error){timer?.stop();postMessage(data.type?.endsWith('-state')?{type:'state-result',requestId:data.requestId,error:error.message||String(error)}:{type:'error',message:error.message||String(error)});}
 };

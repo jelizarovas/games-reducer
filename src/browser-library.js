@@ -1,3 +1,4 @@
+import {validateStateRecords,unpackState} from './save-state-codec';
 import {batchDecision,pruneReviewHistory} from './review-batch';
 import {SYSTEMS,LIMIT,statuses,cleanTitle,extension,safePath,identity,safeMetadata,decodeRom,validateBackup,validSaveKey} from './browser-core';
 import {assetUrl} from './assets';
@@ -9,8 +10,8 @@ const DB_NAME=SAVE_DATABASE;
 let db,initializing,library,player=null,preview=null,catalogPromise,releaseTab;
 const empty=()=>({version:1,root:null,trash:null,games:[],history:[],pending:[],current:null});
 function database(){return new Promise((resolve,reject)=>{
-  const request=indexedDB.open(DB_NAME,2);
-  request.onupgradeneeded=()=>{for(const [name,options]of [['library',undefined],['files',{keyPath:'key'}]])if(!request.result.objectStoreNames.contains(name))request.result.createObjectStore(name,options);};
+  const request=indexedDB.open(DB_NAME,3);
+  request.onupgradeneeded=()=>{for(const [name,options]of [['library',undefined],['files',{keyPath:'key'}],['states',{keyPath:'key'}]])if(!request.result.objectStoreNames.contains(name))request.result.createObjectStore(name,options);};
   request.onsuccess=()=>{request.result.onversionchange=()=>request.result.close();resolve(request.result);};request.onerror=()=>reject(request.error);
   request.onblocked=()=>reject(new Error('Close other Games Reducer tabs and reload to upgrade local saves.'));
 });}
@@ -149,22 +150,24 @@ export async function exportBackup(){
   const records=await new Promise((resolve,reject)=>{const r=db.transaction('files').objectStore('files').getAll();r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});
   const encode=bytes=>{let text='';for(let i=0;i<bytes.length;i+=8192)text+=String.fromCharCode(...bytes.subarray(i,i+8192));return btoa(text);};
   const saves=records.filter(r=>validSaveKey(r.key)).map(r=>({key:r.key,files:Object.fromEntries(Object.entries(r.data).map(([ext,bytes])=>[ext,encode(new Uint8Array(bytes))]))}));
-  const backup={format:'games-reducer-backup',version:2,exportedAt:new Date().toISOString(),saves,current:library.games.find(g=>g.id===library.current)?identity(game(library.current)):null,games:[...library.games,...library.pending.filter(p=>!library.games.some(g=>identity(g)===identity(p)))].map(g=>({system:g.system,relative_path:g.relative_path,size:g.size,title:g.title,status:g.status,seconds:g.seconds,metadata:safeMetadata(g.metadata)}))};
-  validateBackup(backup);return backup;
+  const states=await allStates();
+  const backup={format:'games-reducer-backup',version:3,states,exportedAt:new Date().toISOString(),saves,current:library.games.find(g=>g.id===library.current)?identity(game(library.current)):null,games:[...library.games,...library.pending.filter(p=>!library.games.some(g=>identity(g)===identity(p)))].map(g=>({system:g.system,relative_path:g.relative_path,size:g.size,title:g.title,status:g.status,seconds:g.seconds,metadata:safeMetadata(g.metadata)}))};
+  validateBackup(backup);if(JSON.stringify(backup).length>128*1024*1024)throw new Error('Backup exceeds 128 MB.');return backup;
 }
 export async function importBackup(input){
-  const backup=validateBackup(input);await init();idle();
+  const backup=validateBackup(input);for(const record of backup.states)await unpackState(record,record.system,record.romHash);await init();idle();
   const records=new Map(backup.games.map(g=>[identity(g),g]));let matched=0;
   const games=library.games.map(g=>{const record=records.get(identity(g));if(!record)return g;records.delete(identity(g));matched++;return {...g,status:record.status,seconds:record.seconds,metadata:{...g.metadata,...record.metadata}};});
   const pending=new Map(library.pending.map(g=>[identity(g),g]));for(const [key,g]of records)pending.set(key,g);
   const next={...library,games,pending:[...pending.values()],history:[],pendingCurrent:backup.current,current:games.find(g=>identity(g)===backup.current)?.id||library.current};
   // Commit the whole import at once; malformed backups never partially apply.
   await new Promise((resolve,reject)=>{
-    const tx=db.transaction(['library','files'],'readwrite');tx.objectStore('library').put(next,'state');
+    const tx=db.transaction(['library','files','states'],'readwrite');tx.objectStore('library').put(next,'state');
     for(const record of backup.saves)tx.objectStore('files').put({key:record.key,data:Object.fromEntries(Object.entries(record.files).map(([ext,text])=>[ext,Uint8Array.from(atob(text),c=>c.charCodeAt(0))]))});
+    for(const record of backup.states)tx.objectStore('states').put(record);
     tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||new Error('Backup import was aborted.'));
   });library=next;preview=null;
-  return {matched,pending:records.size,saves:backup.saves.length};
+  return {matched,pending:records.size,saves:backup.saves.length,states:backup.states.length};
 }
 export async function readCartridgeSave(key){
   await init();return new Promise((resolve,reject)=>{const r=db.transaction('files').objectStore('files').get(key);r.onsuccess=()=>resolve(r.result?.data||{});r.onerror=()=>reject(r.error);});
@@ -237,4 +240,12 @@ async function dispatch(path,body){
     library.games=library.games.filter(g=>!removable.includes(g.id));library.history=pruneReviewHistory(library.history,removable);preview=null;await save();return {count:removable.length};
   }
   throw new Error('This action is not available in the browser edition.');
+}
+
+async function allStates(){await init();return new Promise((resolve,reject)=>{const request=db.transaction('states').objectStore('states').getAll();request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);});}
+export async function gameStates(gameId){return (await allStates()).filter(r=>r.gameId===gameId);}
+export async function writeStateSlot(game,slot,snapshot){
+ const [record]=validateStateRecords([{...snapshot,gameId:game.id,key:`${game.id}:${slot}`,slot,createdAt:new Date().toISOString()}]);
+ if(record.system!==game.system)throw new Error('Wrong game console.');await init();
+ await new Promise((resolve,reject)=>{const tx=db.transaction('states','readwrite');tx.objectStore('states').put(record);tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||new Error('State could not be saved.'));});return record;
 }

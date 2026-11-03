@@ -48,6 +48,7 @@ window.addEventListener('message',async event=>{
     if(data.type==='loaded'){send('loaded');if(!paused){audio.setSilent(muted);audio.start();}canvas.focus();}
     if(data.type==='save')persist(data.files);
     if(data.type==='flushed'){const request=requests.get(data.requestId);if(request){clearTimeout(request.timeout);requests.delete(data.requestId);await persist(data.files);saveError?request.reject(saveError):request.resolve();}}
+    if(data.type==='state-result'){const r=requests.get(data.requestId);if(r){clearTimeout(r.timeout);requests.delete(data.requestId);if(data.error)r.reject(new Error(data.error));else{try{await persist(data.files||{});await flushStorage();saveError?r.reject(saveError):r.resolve(data.state);}catch(error){r.reject(error);}}}}
     if(data.type==='error')fail(new Error(data.message));
    };
    const offscreen=canvas.transferControlToOffscreen();worker.postMessage({type:'load',base,system,bytes:m.bytes,saved,sampleRate:audio.sampleRate,canvas:offscreen,port:channel.port2,paused},[m.bytes.buffer,offscreen,channel.port2]);
@@ -57,6 +58,10 @@ window.addEventListener('message',async event=>{
   if(m.type==='fast-forward')fastForward(m.held);
   if(m.type==='mute'){muted=!!m.muted;audio?.setSilent(muted||speed>1);}
   if(m.type==='key')key(m.code,m.down,'parent');
+  if(m.type==='capture-state'||m.type==='restore-state'){
+   try{pause(true);const state=await new Promise((resolve,reject)=>{const timeout=setTimeout(()=>{requests.delete(m.requestId);reject(new Error('Save-state operation timed out.'));},10000);requests.set(m.requestId,{resolve,reject,timeout});command({type:m.type,requestId:m.requestId,state:m.state});});send('state-result',{requestId:m.requestId,state});}
+   catch(error){send('state-result',{requestId:m.requestId,error:error.message});}
+  }
   if(m.type==='flush-saves'){try{audio?.stop();await window.reducerFlushSaves();send('saves-flushed',{requestId:m.requestId});}catch(error){send('saves-flushed',{requestId:m.requestId,error:error.message});}}
  }catch(error){fail(error);}
 });

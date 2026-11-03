@@ -55,6 +55,17 @@ export class WorkerCore {
         wasm.workercore_key(this.__wbg_ptr, ptr0, len0, down, player);
     }
     /**
+     * @param {Uint8Array} bytes
+     */
+    load_state(bytes) {
+        const ptr0 = passArray8ToWasm0(bytes, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.workercore_load_state(this.__wbg_ptr, ptr0, len0);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
+    /**
      * @param {string} system
      * @param {Uint8Array} rom
      * @param {number} sample_rate
@@ -86,6 +97,18 @@ export class WorkerCore {
     }
     release_keys() {
         wasm.workercore_release_keys(this.__wbg_ptr);
+    }
+    /**
+     * @returns {Uint8Array}
+     */
+    save_state() {
+        const ret = wasm.workercore_save_state(this.__wbg_ptr);
+        if (ret[3]) {
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        var v1 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+        return v1;
     }
     /**
      * @returns {Float32Array}

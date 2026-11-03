@@ -8,7 +8,14 @@ export const NesWorkerPlayer=forwardRef(function NesWorkerPlayer({game,paused,mu
  const speed=useRef(1),stats=useRef({frames:0,drawn:0}),saveQueue=useRef(Promise.resolve()),saveError=useRef(null);
  const send=message=>worker.current?.postMessage(message);
  const persist=bytes=>{if(bytes)saveQueue.current=saveQueue.current.then(()=>writeCartridgeSave(`${game.id}-nes`,{sav:bytes})).catch(error=>{saveError.current=error;latest.current.onError(error.message);});return saveQueue.current;};
+ const stateRequest=(type,state)=>new Promise((resolve,reject)=>{
+  if(!worker.current){reject(new Error('Wait for the game to load.'));return;}audio.current?.stop();held.current.clear();speed.current=1;
+  const requestId=crypto.randomUUID(),timer=setTimeout(()=>{requests.current.delete(requestId);reject(new Error('Save-state operation timed out.'));},10000);
+  requests.current.set(requestId,{resolve,reject,timer});send({type,requestId,state});
+ });
  useImperativeHandle(ref,()=>({
+  saveState(){return stateRequest('capture-state');},
+  loadState(state){return stateRequest('restore-state',state);},
   focus(){canvas.current?.focus();},
   getDiagnostics(){return {...stats.current,speed:speed.current,audio:audio.current?.stats,worker:true};},
   fastForward(held){speed.current=held?3:1;if(container.current)container.current.dataset.speed=speed.current;audio.current?.setSilent(latest.current.muted||held);send({type:'speed',held});},
@@ -35,6 +42,7 @@ export const NesWorkerPlayer=forwardRef(function NesWorkerPlayer({game,paused,mu
     if(data.type==='loaded'){latest.current.onLoaded();if(!latest.current.paused){output.setSilent(latest.current.muted);output.start();}}
     if(data.type==='save')persist(data.bytes);
     if(data.type==='flushed'){const request=requests.current.get(data.requestId);if(request){clearTimeout(request.timer);requests.current.delete(data.requestId);await persist(data.bytes);saveError.current?request.reject(saveError.current):request.resolve();}}
+    if(data.type==='state-result'){const request=requests.current.get(data.requestId);if(request){clearTimeout(request.timer);requests.current.delete(data.requestId);if(data.error)request.reject(new Error(data.error));else{await persist(data.bytes);saveError.current?request.reject(saveError.current):request.resolve(data.state);}}}
     if(data.type==='error')fail(new Error(data.message));
    };
    const offscreen=canvas.current.transferControlToOffscreen();

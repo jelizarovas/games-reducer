@@ -41,7 +41,7 @@ impl SaveWriter for Saves {
 }
 enum Core { Genesis(Box<GenesisEmulator>,GenesisInputs), Snes(Box<SnesEmulator>,SnesInputs) }
 #[wasm_bindgen]
-pub struct WorkerCore { core: Core, video: Video, audio: Audio, saves: Saves, resampling: DynamicResamplingRate }
+pub struct WorkerCore { core: Core, video: Video, audio: Audio, saves: Saves, resampling: DynamicResamplingRate, sample_rate: u32 }
 #[wasm_bindgen]
 impl WorkerCore {
     #[wasm_bindgen(constructor)]
@@ -53,7 +53,7 @@ impl WorkerCore {
             "snes"=>{let mut e=SnesEmulator::create(rom,SnesEmulatorConfig::default(),CoprocessorRoms::none(),&mut saves).map_err(|e|JsValue::from_str(&e.to_string()))?;e.update_audio_output_frequency(sample_rate as u64);Core::Snes(Box::new(e),SnesInputs::default())},
             _=>return Err(JsValue::from_str("Unsupported worker console"))
         };
-        Ok(Self{core,video:Video::default(),audio:Audio::default(),saves,resampling:DynamicResamplingRate::new(sample_rate,sample_rate/20)})
+        Ok(Self{core,video:Video::default(),audio:Audio::default(),saves,resampling:DynamicResamplingRate::new(sample_rate,sample_rate/20),sample_rate})
     }
     pub fn frame(&mut self)->Result<(),JsValue>{
         loop {
@@ -63,6 +63,33 @@ impl WorkerCore {
             }.map_err(|e|JsValue::from_str(&e))?;
             if result==TickEffect::FrameRendered {return Ok(())}
         }
+    }
+    pub fn save_state(&self)->Result<Vec<u8>,JsValue>{
+        let (header,encoded)=match &self.core {
+            Core::Genesis(e,_) => (b"GRS1GEN0",bincode::encode_to_vec((e,&self.saves.files),encoding())),
+            Core::Snes(e,_) => (b"GRS1SNS0",bincode::encode_to_vec((e,&self.saves.files),encoding())),
+        };
+        let mut bytes=header.to_vec();bytes.extend(encoded.map_err(|e|JsValue::from_str(&e.to_string()))?);Ok(bytes)
+    }
+    pub fn load_state(&mut self,bytes:&[u8])->Result<(),JsValue>{
+        // Decode fully before touching the running core. ROM bytes remain local, never in the state.
+        if bytes.len()<8||bytes.len()>10*1024*1024{return Err(JsValue::from_str("Invalid state size"));}
+        let files=match &mut self.core {
+            Core::Genesis(current,inputs)=>{
+                if &bytes[..8]!=b"GRS1GEN0"{return Err(JsValue::from_str("Wrong state format"));}
+                let ((mut restored,files),used):((Box<GenesisEmulator>,HashMap<String,Vec<u8>>),usize)=bincode::decode_from_slice(&bytes[8..],encoding()).map_err(|e|JsValue::from_str(&e.to_string()))?;
+                if used!=bytes.len()-8{return Err(JsValue::from_str("Trailing state data"));}
+                restored.take_rom_from(current);restored.reload_config(&GenesisEmulatorConfig::default());restored.update_audio_output_frequency(self.sample_rate as u64);*current=restored;*inputs=GenesisInputs::default();files
+            },
+            Core::Snes(current,inputs)=>{
+                if &bytes[..8]!=b"GRS1SNS0"{return Err(JsValue::from_str("Wrong state format"));}
+                let ((mut restored,files),used):((Box<SnesEmulator>,HashMap<String,Vec<u8>>),usize)=bincode::decode_from_slice(&bytes[8..],encoding()).map_err(|e|JsValue::from_str(&e.to_string()))?;
+                if used!=bytes.len()-8{return Err(JsValue::from_str("Trailing state data"));}
+                restored.take_rom_from(current);restored.reload_config(&SnesEmulatorConfig::default());restored.update_audio_output_frequency(self.sample_rate as u64);*current=restored;*inputs=SnesInputs::default();files
+            }
+        };
+        self.saves.files=files.clone();self.saves.dirty=files;self.audio.samples.clear();self.resampling=DynamicResamplingRate::new(self.sample_rate,self.sample_rate/20);
+        match &mut self.core{Core::Genesis(e,_)=>e.force_render(&mut self.video),Core::Snes(e,_)=>e.force_render(&mut self.video)}.map_err(|e|JsValue::from_str(&e))
     }
     pub fn pixels(&self)->Vec<u8>{self.video.pixels.clone()}
     pub fn width(&self)->u32{self.video.width}

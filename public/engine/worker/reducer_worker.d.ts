@@ -10,9 +10,11 @@ export class WorkerCore {
     frame(): void;
     height(): number;
     key(code: string, down: boolean, player: number): void;
+    load_state(bytes: Uint8Array): void;
     constructor(system: string, rom: Uint8Array, sample_rate: number, saves_json: string);
     pixels(): Uint8Array;
     release_keys(): void;
+    save_state(): Uint8Array;
     take_audio(): Float32Array;
     take_saves(): string;
     width(): number;
@@ -29,9 +31,11 @@ export interface InitOutput {
     readonly workercore_frame: (a: number) => [number, number];
     readonly workercore_height: (a: number) => number;
     readonly workercore_key: (a: number, b: number, c: number, d: number, e: number) => void;
+    readonly workercore_load_state: (a: number, b: number, c: number) => [number, number];
     readonly workercore_new: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number, number];
     readonly workercore_pixels: (a: number) => [number, number];
     readonly workercore_release_keys: (a: number) => void;
+    readonly workercore_save_state: (a: number) => [number, number, number, number];
     readonly workercore_take_audio: (a: number) => [number, number];
     readonly workercore_take_saves: (a: number) => [number, number];
     readonly workercore_width: (a: number) => number;

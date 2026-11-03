@@ -1,4 +1,5 @@
 import {unzipSync} from 'fflate';
+import {validateStateRecords} from './save-state-codec.js';
 
 export const SYSTEMS = {
   megadrive:{name:'Sega Genesis',extensions:['.gen','.md','.bin','.smd']},
@@ -38,15 +39,16 @@ export function decodeRom(bytes,name,system) {
   return {bytes:entries[0][1],name:entries[0][0].split(/[\\/]/).pop()};
 }
 export function validateBackup(input) {
-  if(!input||input.format!=='games-reducer-backup'||![1,2].includes(input.version)||!Array.isArray(input.games)||input.games.length>50000)throw new Error('Not a supported Games Reducer backup.');
+  if(!input||input.format!=='games-reducer-backup'||![1,2,3].includes(input.version)||!Array.isArray(input.games)||input.games.length>50000)throw new Error('Not a supported Games Reducer backup.');
   const seen=new Set();
   const games=input.games.map(g=>{
     if(!g||!SYSTEMS[g.system]||!statuses.includes(g.status)||!Number.isSafeInteger(g.size)||g.size<0||g.size>LIMIT||!Number.isFinite(g.seconds)||g.seconds<0||g.seconds>1e10)throw new Error('Backup has an invalid game record.');
     const record={system:g.system,relative_path:safePath(g.relative_path),size:g.size,status:g.status,seconds:g.seconds,title:String(g.title||'').slice(0,400),metadata:safeMetadata(g.metadata)};
     const key=identity(record);if(seen.has(key))throw new Error('Backup has duplicate game records.');seen.add(key);return record;
   });
-  const saves=input.version===2?validateSaves(input.saves):[];
-  return {games,saves,current:typeof input.current==='string'?input.current:null};
+  const saves=input.version>=2?validateSaves(input.saves):[];
+  const states=input.version===3?validateStateRecords(input.states):[];
+  return {games,saves,states,current:typeof input.current==='string'?input.current:null};
 }
 export const validSaveKey=key=>typeof key==='string'&&/^[a-f0-9]{24}-[^/\\:\x00-\x1f]{1,300}$/.test(key);
 export function validateSaves(saves){

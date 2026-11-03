@@ -1,10 +1,10 @@
-import {Ellipsis,LogOut,RotateCcw,Menu,Settings2,LayoutGrid,Play,Keyboard,Gauge} from 'lucide-react';
+import {Ellipsis,LogOut,RotateCcw,Menu,Settings2,LayoutGrid,Play,Keyboard,Gauge,Save} from 'lucide-react';
 import {Dropdown} from './Dropdown';
 import {summarizeGames,playTime} from './progress';
 import {usePwa} from './PwaControls';
 import {installPwa} from './pwa';
 
-export function SessionMenu({showPerformance,onTogglePerformance,onFinish,onUndo,onController,onSettings,onShortcuts,onNavigate,busy,games=[],saveCount=0,onRefresh}) {
+export function SessionMenu({onSaveStates,canSaveStates,showPerformance,onTogglePerformance,onFinish,onUndo,onController,onSettings,onShortcuts,onNavigate,busy,games=[],saveCount=0,onRefresh}) {
   const pwa=usePwa();
   const summary=summarizeGames(games),percent=summary.total?Math.round(summary.reviewed/summary.total*100):0;
   const progress=<div className="menu-progress" aria-label="Collection progress">
@@ -20,6 +20,7 @@ export function SessionMenu({showPerformance,onTogglePerformance,onFinish,onUndo
     {value:'undo',label:'Undo last decision',icon:<RotateCcw size={17}/>,disabled:busy,onSelect:onUndo},
     {value:'controller',label:'Controller menu',icon:<Menu size={17}/>,onSelect:onController},
     {value:'settings',label:'Library settings',icon:<Settings2 size={17}/>,onSelect:onSettings},
+    {value:'states',label:'Save states',icon:<Save size={17}/>,disabled:!canSaveStates,onSelect:onSaveStates},
     {value:'fps',label:showPerformance?'Hide FPS counter':'Show FPS counter',icon:<Gauge size={17}/>,onSelect:onTogglePerformance},
     {value:'shortcuts',label:'Keyboard shortcuts',icon:<Keyboard size={17}/>,onSelect:onShortcuts},
     ...(pwa.installable?[{value:'install',label:'Install app',onSelect:installPwa}]:[]),
