@@ -17,8 +17,8 @@ export function GamesPage({selection,games,query,onQuery,filter,onFilter,categor
   useEffect(()=>{localStorage.setItem('games-reducer-view',view);},[view]);
   const firstRow=Math.max(0,Math.floor(position/rowHeight)-3),lastRow=Math.min(Math.ceil(games.length/columns),Math.ceil((position+dimensions.height)/rowHeight)+3);
   return <section className="route-surface games-page" aria-label="Games library">
-    <div className="library-page-toolbar"><SelectionToolbar selection={selection}/>
-      <label className="catalog-search"><Search size={18}/><input aria-label="Search library" placeholder="Search games" value={query} onChange={e=>onQuery(e.target.value)}/></label>
+    <div className="library-page-toolbar"><div className="catalog-search-row"><SelectionToolbar selection={selection}/>
+      <label className="catalog-search"><Search size={18}/><input aria-label="Search library" placeholder="Search games" value={query} onChange={e=>onQuery(e.target.value)}/></label></div>
       <Dropdown label="Library category" value={category} options={categories} onChange={onCategory}><span>{categories.find(c=>c.value===category)?.label}</span></Dropdown>
       <LanguageFilter value={language} onChange={onLanguage} options={languages}/>
       <FilterMenu library filter={filter} onFilter={onFilter} category={category} onCategory={onCategory} categories={categories} language={language} onLanguage={onLanguage} languages={languages}/>

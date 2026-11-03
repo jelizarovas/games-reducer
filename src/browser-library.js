@@ -212,6 +212,13 @@ async function dispatch(path,body){
   if(path==='/state'){const saveCount=await new Promise((resolve,reject)=>{const r=db.transaction('files').objectStore('files').count();r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});return {root:library.root?.name||'',connected:!!library.root,trash:library.trash?.name||'',currentId:library.current,metadataConfigured:false,systems:SYSTEMS,stats:[],saveCount,compatibility:compatibilityReport(library.games).counts,playerActive:!!player};}
   if(path==='/games')return library.games.map(publicGame);
   if(path==='/compatibility/report')return compatibilityReport(library.games);
+  if(path==='/compatibility/mark'){
+    idle();
+    if(!Array.isArray(body?.ids))throw new Error('Choose the games from the scan results.');
+    const candidates=[...new Set(body.ids)].map(id=>game(id)).filter(g=>!g.missing&&isBlocked(g)&&g.status!=='discard');
+    for(const g of candidates){library.history.push({id:g.id,before:g.status});g.status='discard';}
+    preview=null;await save();return {count:candidates.length};
+  }
   if(path==='/scan')return scanFolder(body?.handle);
   if(path==='/current'){if(body.id){game(body.id);library.current=body.id;await save();}return {ok:true};}
   if(path==='/player/start'){if(player)throw new Error('A game is already running.');const g=game(body.id);await permission(library.root);if(g.missing)throw new Error('ROM is missing. Rescan your folder.');if(g.system==='nes'){const file=await g.handle.getFile();g.compatibility=await inspectNesFile(file);await save();if(isBlocked(g))throw new Error(g.compatibility.reason);}player={id:g.id,lastTick:Date.now()};library.current=g.id;await save();return {ok:true};}

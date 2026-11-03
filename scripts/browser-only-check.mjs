@@ -223,8 +223,10 @@ try{
     for(const [name,data]of [['Golf Z Unsupported.nes',bytes],['Golf Z Truncated.nes',bytes.slice(0,16)]]){const file=await dir.getFileHandle(name,{create:true}),writer=await file.createWritable();await writer.write(data);await writer.close();}
   },fixtures.find(f=>f.system==='nes').bytes);
   await openSettings();await page.getByRole('button',{name:'Choose ROM folder',exact:true}).click();
-  for(const title of ['Golf Z Unsupported','Golf Z Truncated'])assert.equal(await page.getByRole('button',{name:title,exact:true}).isDisabled(),true);
-  assert.ok(await page.getByRole('button',{name:'Golf Z Unsupported',exact:true}).innerText().then(text=>text.includes('Unsupported mapper 19')));
+  await page.getByRole('dialog',{name:'Scan complete',exact:true}).waitFor();assert.match(await page.getByRole('dialog',{name:'Scan complete',exact:true}).innerText(),/2 games cannot be launched/);
+  for(const title of ['Golf Z Unsupported','Golf Z Truncated'])assert.equal(await page.getByRole('button',{name:title,exact:true}).count(),0);
+  await page.getByRole('button',{name:'No',exact:true}).click();
+  for(const g of (await store()).games.filter(g=>g.title.startsWith('Golf Z')))assert.equal(g.status,'unreviewed');
   await openSettings();const reportDownload=page.waitForEvent('download');await page.getByRole('button',{name:'Export compatibility report',exact:true}).click();const report=JSON.parse(fs.readFileSync(await(await reportDownload).path(),'utf8'));assert.equal(report.counts.unsupported,1);assert.equal(report.counts.invalid,1);await closeDialog();
   await page.getByRole('button',{name:'Golf Ko Open',exact:true}).click();await playing();await page.getByRole('button',{name:'Keep game',exact:true}).click();await playing();
   const checked=await store();assert.ok(!checked.games.find(g=>g.id===checked.current)?.title?.startsWith('Golf Z'));
@@ -232,9 +234,14 @@ try{
   await page.getByRole('button',{name:'Stop game',exact:true}).click();
   // Simulate an existing library from before compatibility records were added.
   await page.evaluate(()=>new Promise((resolve,reject)=>{const r=indexedDB.open('games-reducer:/games-reducer/');r.onsuccess=()=>{const db=r.result,tx=db.transaction('library','readwrite'),store=tx.objectStore('library'),get=store.get('state');get.onsuccess=()=>{const state=get.result;for(const game of state.games)delete game.compatibility;store.put(state,'state');};tx.oncomplete=()=>{db.close();resolve();};tx.onerror=()=>reject(tx.error);};}));
-  await page.reload();await page.getByRole('button',{name:'Golf Z Unsupported',exact:true}).waitFor();assert.equal(await page.getByRole('button',{name:'Golf Z Unsupported',exact:true}).isDisabled(),true);
+  await page.reload();await page.locator('.game-row').first().waitFor();assert.equal(await page.getByRole('button',{name:'Golf Z Unsupported',exact:true}).count(),0);
   assert.equal((await store()).games.find(g=>g.title==='Golf Ko Open').status,'keep');
-  console.log('PASS compatibility scan/report, queue exclusion, disabled launch and existing-library upgrade without changing decisions');
+  await openSettings();await page.getByRole('button',{name:'Reconnect / rescan',exact:true}).click();await page.getByRole('button',{name:'Yes, mark for removal',exact:true}).click();
+  await page.getByRole('dialog',{name:'Scan complete',exact:true}).waitFor({state:'hidden'});
+  const marked=await store();for(const g of marked.games.filter(g=>g.title.startsWith('Golf Z')))assert.equal(g.status,'discard');assert.equal(marked.games.find(g=>g.title==='Golf Ko Open').status,'keep');
+  assert.equal(await page.evaluate(async()=>{const root=await navigator.storage.getDirectory(),roms=await root.getDirectoryHandle('roms'),dir=await roms.getDirectoryHandle('nes');return (await Promise.all(['Golf Z Unsupported.nes','Golf Z Truncated.nes'].map(async name=>(await(await dir.getFileHandle(name)).getFile()).size))).every(size=>size>0);}),true);
+  await page.getByRole('button',{name:'More actions',exact:true}).click();await page.getByRole('menuitem',{name:'Finish session',exact:true}).click();for(const title of ['Golf Z Unsupported','Golf Z Truncated'])await page.locator('.cleanup-list').getByText(title,{exact:false}).waitFor();await closeDialog();
+  console.log('PASS scan hides unlaunchable games; No preserves decisions, Yes marks only blocked games; ROM files remain for later cleanup');
   // Language filters must apply to the list, /games and next-game decisions.
   await page.evaluate(async encoded=>{const root=await navigator.storage.getDirectory(),roms=await root.getDirectoryHandle('roms'),dir=await roms.getDirectoryHandle('nes');for(const name of ['Golf L English (U).nes','Golf M Japanese (J).nes','Golf N English (U).nes','Golf O Unknown.nes']){const file=await dir.getFileHandle(name,{create:true}),writer=await file.createWritable();await writer.write(Uint8Array.from(atob(encoded),c=>c.charCodeAt(0)));await writer.close();}},fixtures.find(f=>f.system==='nes').bytes);
   await openSettings();await page.getByRole('button',{name:'Reconnect / rescan',exact:true}).click();
@@ -258,7 +265,7 @@ try{
   await setLanguages([]);
   console.log('PASS multi-language filters, English plus Unknown without Japanese, persisted selection, mobile clickaway and next-game queue; active game preserved');
   // Large-library rendering uses synthetic records in this disposable profile only.
-  await page.evaluate(()=>new Promise((resolve,reject)=>{const r=indexedDB.open('games-reducer:/games-reducer/');r.onsuccess=()=>{const db=r.result,tx=db.transaction('library','readwrite'),store=tx.objectStore('library'),get=store.get('state');get.onsuccess=()=>{const state=get.result,base=state.games[0];state.games=Array.from({length:5000},(_,i)=>({...base,id:i.toString(16).padStart(24,'0'),relative_path:'nes/Fixture '+i+'.nes',title:'Fixture '+String(i).padStart(4,'0'),status:'unreviewed'}));store.put(state,'state');};tx.oncomplete=()=>{db.close();resolve();};tx.onerror=()=>reject(tx.error);};}));
+  await page.evaluate(()=>new Promise((resolve,reject)=>{const r=indexedDB.open('games-reducer:/games-reducer/');r.onsuccess=()=>{const db=r.result,tx=db.transaction('library','readwrite'),store=tx.objectStore('library'),get=store.get('state');get.onsuccess=()=>{const state=get.result,base=state.games.find(g=>g.compatibility?.status==='supported')||state.games[0];state.games=Array.from({length:5000},(_,i)=>({...base,id:i.toString(16).padStart(24,'0'),relative_path:'nes/Fixture '+i+'.nes',title:'Fixture '+String(i).padStart(4,'0'),status:'unreviewed'}));store.put(state,'state');};tx.oncomplete=()=>{db.close();resolve();};tx.onerror=()=>reject(tx.error);};}));
   await page.goto(url+'games/');await page.getByRole('region',{name:'Games library',exact:true}).waitFor();
     await selectAction('Select all');await selectionCount(5000);assert.ok(await page.locator('.catalog-card[aria-pressed=true]').count()<100);await selectAction('Invert selection');await selectionCount(0);
   const firstCard=await page.locator('.catalog-card').first().boundingBox();await page.keyboard.down('Shift');await page.mouse.click(firstCard.x+20,firstCard.y+20);await page.keyboard.up('Shift');await selectionCount(1);await page.getByRole('textbox',{name:'Search library'}).fill('Fixture 4999');await selectionCount(0);await selectAction('Select all');await selectionCount(1);await selectAction('Clear selection');await page.getByRole('textbox',{name:'Search library'}).fill('');
