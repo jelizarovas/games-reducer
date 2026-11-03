@@ -74,6 +74,10 @@ try{
   await page.getByRole('button',{name:'Choose folder',exact:true}).click();await page.getByRole('button',{name:'Choose ROM folder',exact:true}).click();
   await page.locator('.game-row').first().waitFor();assert.equal(await page.locator('.game-row').count(),3);
   let data=await store();assert.ok(data.games.every(g=>g.metadata.genre&&g.metadata.released&&g.metadata.cover));
+  await page.goto(url+'?game=super-mario-bros&console=nes');await page.getByRole('heading',{name:'Super Mario Bros.',exact:true}).waitFor();
+  await page.reload();await page.getByRole('heading',{name:'Super Mario Bros.',exact:true}).waitFor();assert.equal(new URL(page.url()).searchParams.get('console'),'nes');assert.equal(await page.locator('.nes-canvas').count(),0,'A bookmark selects without automatically launching a ROM');
+  console.log('PASS named game URL selects the matching local game across reloads');
+
   await page.getByRole('combobox',{name:'Sort games',exact:true}).click();await page.keyboard.press('Shift+Slash');await page.getByRole('dialog',{name:'Keyboard shortcuts',exact:true}).waitFor();await page.keyboard.press('Shift+Slash');assert.equal(await page.getByRole('dialog').count(),0);
   await page.getByRole('combobox',{name:'Sort games',exact:true}).click();await page.keyboard.down('Alt');await page.waitForFunction(()=>document.body.classList.contains('show-shortcuts'));await page.keyboard.up('Alt');await page.keyboard.press('Escape');await page.waitForFunction(()=>!document.body.classList.contains('show-shortcuts'));
   await page.screenshot({path:path.join(run,'library.png')});console.log('PASS folder scan, bundled metadata/artwork, and Pages subpath isolation');
@@ -124,6 +128,14 @@ try{
   for(const system of order){
     const g=data.games.find(g=>g.system===system);
     await page.getByRole('button',{name:g.title,exact:true}).click();await playing();
+    assert.equal(new URL(page.url()).searchParams.get('console'),system);
+    if(system==='nes'){
+      const sample=()=>page.locator('.nes-canvas').evaluate(el=>({frames:Number(el.dataset.frames||0),time:performance.now()}));
+      const checkRate=async label=>{const before=await sample();await page.waitForTimeout(1800);const after=await sample(),fps=(after.frames-before.frames)*1000/(after.time-before.time);assert.ok(fps>45&&fps<75,`${label}: ${fps}fps`);console.log('PASS NES pacing',label,fps.toFixed(1)+'fps');};
+      await checkRate('fresh launch');await page.evaluate(()=>{const until=performance.now()+500;while(performance.now()<until){}});await checkRate('after main-thread stall');
+      await page.getByRole('button',{name:'Review game',exact:true}).click();const pausedFrames=(await sample()).frames;await page.waitForTimeout(150);assert.equal((await sample()).frames,pausedFrames);await page.getByRole('button',{name:'Resume game',exact:true}).click();await playing();await checkRate('after resume');
+    }
+
     if(system!=='nes'){const engine=page.frames().find(f=>f.url().includes('/play.html'));assert.ok(engine.url().includes('/engine-'),'Emulator URLs are content-versioned');assert.equal(await engine.evaluate(()=>crossOriginIsolated),true);}
     if(system!=='nes')await page.frames().find(f=>f.url().includes('/play.html')).waitForFunction(()=>window.reducerRuntimeState().renderedFrames>250,{},{timeout:30000});await page.waitForTimeout(300);await page.screenshot({path:path.join(run,`${system}.png`)});
     await page.getByRole('button',{name:'Mute sound',exact:true}).click();await playing();await page.getByRole('button',{name:'Unmute sound',exact:true}).click();

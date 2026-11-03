@@ -12,6 +12,7 @@ import {thumbnail} from './assets';
 import {BrowserSettings} from './BrowserSettings';
 import {GamesPage} from './LibraryPages';
 import {useRoute,routePath} from './routes';
+import {findGameInUrl,urlForGame} from './game-url';
 import {FastForward,PanelLeftClose,PanelLeftOpen,LayoutGrid,List} from 'lucide-react';
 import {SidebarResize} from './SidebarResize';
 import {KeyboardShortcuts} from './KeyboardShortcuts';
@@ -72,6 +73,13 @@ function App() {
     g.title.toLowerCase().includes(query.toLowerCase())), sort), [games, system, category, language, filter, query, sort]);
 
   const selection=useGameSelection(visible);
+  useEffect(()=>{
+    const game=playing||current;
+    if(route!=='player'||!game)return;
+    const url=urlForGame(game,games,location.href);
+    if(url.href!==location.href)history.replaceState(history.state,'',url);
+  },[route,playing?.id,current?.id,games]);
+
 
   async function refresh() {
     const [info, all] = await Promise.all([api('/state'), api('/games')]);
@@ -84,7 +92,7 @@ function App() {
         let { info, all } = await refresh();
         if (cancelled) return;
         setSystem('all');
-        setSelected(all.find(g => g.id === info.currentId && canQueue(g) && matchesLanguage(g,language))?.id || all.find(g => g.status === 'unreviewed' && canQueue(g) && matchesLanguage(g,language))?.id);
+        setSelected(findGameInUrl(all,location.href)?.id || all.find(g => g.id === info.currentId && canQueue(g) && matchesLanguage(g,language))?.id || all.find(g => g.status === 'unreviewed' && canQueue(g) && matchesLanguage(g,language))?.id);
       } catch (e) { if (!cancelled) { setError(e.message); setModal('settings'); } }
     })();
     return () => { cancelled = true; };
@@ -192,7 +200,7 @@ function App() {
     try {
       await stopPlayer();
       const result = await api('/scan', { handle: chosen });
-      const { all } = await refresh(); setSelected(all.find(g => matchesConsole(g, system) && canQueue(g) && matchesLanguage(g,language))?.id);
+      const { all } = await refresh(); setSelected(findGameInUrl(all,location.href)?.id || all.find(g => matchesConsole(g, system) && canQueue(g) && matchesLanguage(g,language))?.id);
       setNotice(`Scanned ${result.count.toLocaleString()} games.${result.warnings.length ? ` ${result.warnings.length} files need attention: ${result.warnings.slice(0, 2).join('; ')}` : ''}`);
       const blocked=all.filter(g=>!g.missing&&isBlocked(g));setBlockedScan(blocked);
       setModal(blocked.some(g=>g.status!=='discard')?'scan-results':null);

@@ -1,6 +1,7 @@
 import { useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
 import { Browser, Controller } from './nes-mappers';
 import {fixNesSpriteTiles} from './nes-sprites';
+import {createNesFrameTimer} from './nes-frame-timer';
 import { engineKey,keyboardCode } from './player-input';
 import {readRom,readCartridgeSave,writeCartridgeSave,SAVE_DATABASE} from './browser-library';
 import {assetUrl} from './assets';
@@ -68,6 +69,7 @@ export const Player = forwardRef(function Player({ game, paused, muted, onLoaded
           document.removeEventListener('keydown', emulator.keyboard.handleKeyDown);
           document.removeEventListener('keyup', emulator.keyboard.handleKeyUp);
           document.removeEventListener('keypress', emulator.keyboard.handleKeyPress);
+          emulator._frameTimer = createNesFrameTimer(emulator._frameTimer);
           const generate = emulator._frameTimer.onGenerateFrame;
           const audio = emulator.nes.opts.onAudioSample;
           emulator.nes.opts.onAudioSample = (left, right) => audio(silence.current || speed.current > 1 ? 0 : left, silence.current || speed.current > 1 ? 0 : right);
