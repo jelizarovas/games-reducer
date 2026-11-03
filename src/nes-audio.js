@@ -4,9 +4,10 @@ export function createNesAudio(onError){
   const context=new AudioContext({latencyHint:'interactive'});
   let node=null,running=false,silent=false,disposed=false,position=0;
   const left=new Float32Array(2048),right=new Float32Array(2048);
-  const update=()=>{position=0;node?.port.postMessage({type:'state',enabled:running&&!silent});};
+  const update=()=>{position=0;node?.port.postMessage({type:'state',enabled:running&&!silent&&context.state==='running'});};
   const resume=()=>{if(!disposed&&running&&context.state==='suspended')context.resume().catch(error=>{if(!disposed)onError(error);});};
   for(const event of ['keydown','pointerdown','touchstart'])document.addEventListener(event,resume,true);
+  context.onstatechange=update;
   const audio={
     sampleRate:context.sampleRate,
     ready:context.audioWorklet.addModule(workletUrl).then(()=>{
@@ -16,12 +17,13 @@ export function createNesAudio(onError){
       node.onprocessorerror=()=>onError(new Error('NES audio stopped unexpectedly. Restart the game to reconnect audio.'));
       node.connect(context.destination);update();
     }),
+    connectSource(port){node.port.postMessage({type:'source',port},[port]);},
     start(){if(disposed||running)return;running=true;update();resume();},
     stop(){if(!running)return;running=false;update();},
     setSilent(value){if(silent===value)return;silent=value;update();},
     writeSample(l,r){if(disposed||!running||silent||!node||context.state!=='running')return;left[position]=l;right[position++]=r;if(position===left.length)audio.flush();},
     flush(){if(position&&node){node.port.postMessage({type:'samples',left:left.slice(0,position),right:right.slice(0,position)});position=0;}},
-    destroy(){if(disposed)return;disposed=true;running=false;for(const event of ['keydown','pointerdown','touchstart'])document.removeEventListener(event,resume,true);node?.disconnect();node?.port.close();context.close().catch(()=>{});},
+    destroy(){if(disposed)return;disposed=true;running=false;context.onstatechange=null;for(const event of ['keydown','pointerdown','touchstart'])document.removeEventListener(event,resume,true);node?.disconnect();node?.port.close();context.close().catch(()=>{});},
   };
   return audio;
 }

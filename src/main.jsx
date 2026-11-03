@@ -23,6 +23,7 @@ import { SessionMenu } from './SessionMenu';
 import { Dropdown } from './Dropdown';
 import { GameList } from './GameList';
 import { Player } from './Player';
+import {PerformanceOverlay} from './PerformanceOverlay';
 import { makePadRouter, GENESIS_KEYS, SNES_KEYS, NES_KEYS } from './controller';
 import './style.css';
 import './controller-ui.css';
@@ -37,6 +38,8 @@ const Pad = ({ children, tone = '' }) => <span className={`pad ${tone}`}>{childr
 
 function App() {
   const [route,setRoute]=useRoute();
+  const [showPerformance,setShowPerformance]=useState(()=>localStorage.getItem('games-reducer-show-fps')==='true');
+  useEffect(()=>{localStorage.setItem('games-reducer-show-fps',String(showPerformance));},[showPerformance]);
   const activeGame=useRef(null),stopping=useRef(null);
   const [shortcutHints,setShortcutHints]=useState(false);
   useEffect(()=>{document.body.classList.toggle('show-shortcuts',shortcutHints);return()=>document.body.classList.remove('show-shortcuts');},[shortcutHints]);
@@ -448,7 +451,7 @@ function App() {
         {expanded && fullscreenHint && <button className="icon-button" aria-label="Enter browser fullscreen" title={fullscreenHint} onClick={nativeFullscreen}><Maximize size={15}/></button>}
         <button className="icon-button" data-shortcut="F" aria-label="Toggle fullscreen" title="Fullscreen · L3 / F" onClick={toggleFullscreen}><Maximize size={19}/></button>
         {controller && <Gamepad2 className="connected header-secondary" size={18} aria-label="Controller connected"/>}
-        <SessionMenu onShortcuts={toggleShortcuts} games={games} saveCount={state?.saveCount} onRefresh={()=>refresh().catch(e=>setError(e.message))} onNavigate={navigate} onFinish={finish} onUndo={undo} onController={()=>openPanel('controller')} onSettings={()=>openPanel('settings')} busy={busy}/>
+        <SessionMenu showPerformance={showPerformance} onTogglePerformance={()=>setShowPerformance(value=>!value)} onShortcuts={toggleShortcuts} games={games} saveCount={state?.saveCount} onRefresh={()=>refresh().catch(e=>setError(e.message))} onNavigate={navigate} onFinish={finish} onUndo={undo} onController={()=>openPanel('controller')} onSettings={()=>openPanel('settings')} busy={busy}/>
       </div>
     </header>
     {route==='games'&&<GamesPage onDecide={decideSelected} selection={selection} games={visible} query={query} onQuery={setQuery} filter={filter} onFilter={chooseFilter} category={category} onCategory={chooseCategory} categories={categoryOptions} language={language} onLanguage={chooseLanguage} languages={languages} sort={sort} onSort={setSort} onPlay={playGame} busy={busy} onSettings={()=>openPanel('settings')}/>}
@@ -475,6 +478,7 @@ function App() {
                 {!current && <button className="play-button" onClick={() => setModal('settings')}>Choose folder</button>}
                 {Boolean(current?.missing) && <p className="red">File missing. Rescan your library.</p>}
               </div></div>}
+            {playing&&showPerformance&&<PerformanceOverlay player={player} paused={phase!=='playing'} gameId={playing.id}/>}
             {phase === 'loading' && <div className="loading-screen"><LoaderCircle className="spin" size={28}/><button onClick={() => stopPlayer().catch(e => setError(e.message))}>Cancel</button></div>}
           </div></div>
         </section>

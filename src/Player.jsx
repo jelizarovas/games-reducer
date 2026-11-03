@@ -3,13 +3,15 @@ import { Browser, Controller } from './nes-mappers';
 import {fixNesSpriteTiles} from './nes-sprites';
 import {createNesFrameTimer} from './nes-frame-timer';
 import {createNesAudio} from './nes-audio';
+import {NesWorkerPlayer} from './NesWorkerPlayer';
 import { engineKey,keyboardCode } from './player-input';
 import {readRom,readCartridgeSave,writeCartridgeSave,SAVE_DATABASE} from './browser-library';
 import {assetUrl} from './assets';
 const buttons = { ArrowUp: Controller.BUTTON_UP, ArrowDown: Controller.BUTTON_DOWN, ArrowLeft: Controller.BUTTON_LEFT, ArrowRight: Controller.BUTTON_RIGHT,
   KeyX: Controller.BUTTON_A, KeyZ: Controller.BUTTON_B, Enter: Controller.BUTTON_START, ControlRight: Controller.BUTTON_SELECT };
 
-export const Player = forwardRef(function Player({ game, paused, muted, onLoaded, onReview, onError, onFullscreen, onFastForward,onShortcutHints,onShortcuts,onShortcut }, ref) {
+export const Player=forwardRef((props,ref)=>props.game.system==='nes'&&typeof Worker!=='undefined'&&typeof HTMLCanvasElement.prototype.transferControlToOffscreen==='function'?<NesWorkerPlayer {...props} ref={ref}/>:<InlinePlayer {...props} ref={ref}/>);
+const InlinePlayer = forwardRef(function Player({ game, paused, muted, onLoaded, onReview, onError, onFullscreen, onFastForward,onShortcutHints,onShortcuts,onShortcut }, ref) {
   const frame = useRef(null), container = useRef(null), nes = useRef(null);
   const speed = useRef(1);
   const silence = useRef(muted); silence.current = muted;
@@ -27,6 +29,7 @@ export const Player = forwardRef(function Player({ game, paused, muted, onLoaded
   const callbacks = useRef({}); callbacks.current = { onLoaded, onReview, onError, onFullscreen, onFastForward,onShortcutHints,onShortcuts,onShortcut };
   const send = message => frame.current?.contentWindow?.postMessage({ source: 'games-reducer', ...message }, location.origin);
   useImperativeHandle(ref, () => ({
+    getDiagnostics(){if(game.system==='nes')return {frames:Number(container.current?.dataset.frames||0),speed:speed.current,audio:nes.current?._speakers.stats};const runtime=frame.current?.contentWindow?.reducerRuntimeState?.();return runtime?{frames:runtime.renderedFrames,speed:runtime.speed}:null;},
     focus(){if(game.system==='nes'){const canvas=container.current?.querySelector('canvas');if(canvas){canvas.tabIndex=0;canvas.focus();}}else frame.current?.contentWindow?.document.querySelector('canvas')?.focus();},
     async flushSaves(){
       if(game.system==='nes'){nes.current?.stop();return flushNes();}

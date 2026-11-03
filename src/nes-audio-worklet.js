@@ -4,6 +4,7 @@ class NesAudioProcessor extends AudioWorkletProcessor {
     super();this.capacity=Math.ceil(sampleRate*.25);this.prefill=Math.ceil(sampleRate*.05);this.fadeLength=Math.max(1,Math.round(sampleRate*.004));
     this.left=new Float32Array(this.capacity);this.right=new Float32Array(this.capacity);this.read=0;this.write=0;this.count=0;this.enabled=false;this.primed=false;this.fadeIn=0;this.tail=0;this.lastL=0;this.lastR=0;this.tailL=0;this.tailR=0;this.underruns=0;this.overruns=0;this.report=0;
     this.port.onmessage=({data})=>{
+      if(data.type==='source'){this.source?.close();this.source=data.port;this.source.onmessage=this.port.onmessage;}
       if(data.type==='state'){this.enabled=data.enabled;this.read=this.write=this.count=0;this.primed=false;this.beginFade();}
       if(data.type==='samples'&&this.enabled){
         for(let i=0;i<data.left.length;i++){
