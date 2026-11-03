@@ -30,6 +30,11 @@ await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 const url=process.env.BROWSER_URL||`http://127.0.0.1:${server.address().port}${prefix}`;
 const browser=await chromium.launch({executablePath:process.env.CHROME_PATH||'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
 const context=await browser.newContext({viewport:{width:1440,height:900},acceptDownloads:true});
+await context.addInitScript(()=>{
+ window.nesAudioHealth=[];window.audioContexts=[];
+ const Context=window.AudioContext;window.AudioContext=class extends Context{constructor(...args){super(...args);window.audioContexts.push(this);}};
+ const Worklet=window.AudioWorkletNode;window.AudioWorkletNode=class extends Worklet{constructor(...args){super(...args);if(args[1]==='games-reducer-nes-audio'){this.port.addEventListener('message',event=>{if(event.data.type==='health')window.nesAudioHealth.push(event.data);});this.port.start();}}};
+});
 let page=await context.newPage();const errors=[];
 const watch=p=>{p.on('console',m=>{if(m.type()==='error')console.log('Browser console:',m.text().slice(0,5000));});p.on('requestfailed',r=>console.log('Failed request:',r.url(),r.failure()?.errorText));p.on('request',r=>{if(new URL(r.url()).pathname.includes('/api/'))apiCalls.push(r.url());});p.on('pageerror',e=>{if(!e.message.includes('Using exceptions for control flow'))errors.push(e.message);});};watch(page);
 const openSettings=async()=>{await page.getByRole('button',{name:'More actions',exact:true}).click();await page.getByRole('menuitem',{name:'Library settings',exact:true}).click();};
@@ -132,8 +137,8 @@ try{
     if(system==='nes'){
       const sample=()=>page.locator('.nes-canvas').evaluate(el=>({frames:Number(el.dataset.frames||0),time:performance.now()}));
       const checkRate=async label=>{const before=await sample();await page.waitForTimeout(1800);const after=await sample(),fps=(after.frames-before.frames)*1000/(after.time-before.time);assert.ok(fps>45&&fps<75,`${label}: ${fps}fps`);console.log('PASS NES pacing',label,fps.toFixed(1)+'fps');};
-      await checkRate('fresh launch');await page.evaluate(()=>{const until=performance.now()+500;while(performance.now()<until){}});await checkRate('after main-thread stall');
-      await page.getByRole('button',{name:'Review game',exact:true}).click();const pausedFrames=(await sample()).frames;await page.waitForTimeout(150);assert.equal((await sample()).frames,pausedFrames);await page.getByRole('button',{name:'Resume game',exact:true}).click();await playing();await checkRate('after resume');
+      await checkRate('fresh launch');const audioHealth=await page.evaluate(()=>({health:window.nesAudioHealth.at(-1),rate:window.audioContexts.at(-1).sampleRate}));assert.ok(audioHealth.health,'Audio worklet reports buffer health');assert.equal(audioHealth.health.sampleRate,audioHealth.rate);assert.equal(audioHealth.health.underruns,0,'No steady-playback audio gaps');await page.evaluate(()=>{window.nesAudioContextBeforePause=window.audioContexts.at(-1);});await page.evaluate(()=>{const until=performance.now()+500;while(performance.now()<until){}});await checkRate('after main-thread stall');
+      await page.getByRole('button',{name:'Review game',exact:true}).click();const pausedFrames=(await sample()).frames;await page.waitForTimeout(150);assert.equal((await sample()).frames,pausedFrames);await page.getByRole('button',{name:'Resume game',exact:true}).click();await playing();await checkRate('after resume');assert.equal(await page.evaluate(()=>window.audioContexts.at(-1)===window.nesAudioContextBeforePause),true,'Pause/resume reuses the output context and sample rate');console.log('PASS NES audio matches device rate, has no startup underruns, and reuses context across pause');
     }
 
     if(system!=='nes'){const engine=page.frames().find(f=>f.url().includes('/play.html'));assert.ok(engine.url().includes('/engine-'),'Emulator URLs are content-versioned');assert.equal(await engine.evaluate(()=>crossOriginIsolated),true);}
@@ -183,8 +188,8 @@ try{
     console.log('PASS update waits during play; user applies after saves flush; cover cache and library survive');
   }
   const nes=data.games.find(g=>g.system==='nes');await page.getByRole('button',{name:nes.title,exact:true}).click();await playing();await page.getByRole('button',{name:'Keep game',exact:true}).click();
-  await page.waitForFunction(()=>document.querySelector('.screen')?.dataset.phase==='playing'||document.querySelector('.screen')?.dataset.phase==='ready');
-  if(await page.getByRole('button',{name:'Stop game',exact:true}).count())await page.getByRole('button',{name:'Stop game',exact:true}).click();
+  await page.waitForFunction(previous=>document.querySelector('.screen')?.dataset.phase==='playing'&&document.querySelector('.header-title')?.textContent!==previous,nes.title);
+  await page.getByRole('button',{name:'Stop game',exact:true}).click();await page.locator('.screen[data-phase=ready]').waitFor();
   assert.equal((await store()).games.find(g=>g.id===nes.id).status,'keep');
   await openSettings();const downloadEvent=page.waitForEvent('download');await page.getByRole('button',{name:'Export backup',exact:true}).click();const download=await downloadEvent;const backupPath=path.join(run,'progress.json');await download.saveAs(backupPath);const backup=JSON.parse(fs.readFileSync(backupPath,'utf8'));
   assert.equal(backup.version,2);assert.equal(backup.saves.length,3);assert.equal(backup.saves.find(s=>s.key.endsWith('Legacy.sfc')).files.sav,'CQgH');assert.equal(backup.games.find(g=>g.system==='nes').status,'keep');assert.ok(!JSON.stringify(backup).includes('handle'));await closeDialog();

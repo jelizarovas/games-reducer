@@ -2,6 +2,7 @@ import { useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
 import { Browser, Controller } from './nes-mappers';
 import {fixNesSpriteTiles} from './nes-sprites';
 import {createNesFrameTimer} from './nes-frame-timer';
+import {createNesAudio} from './nes-audio';
 import { engineKey,keyboardCode } from './player-input';
 import {readRom,readCartridgeSave,writeCartridgeSave,SAVE_DATABASE} from './browser-library';
 import {assetUrl} from './assets';
@@ -54,7 +55,7 @@ export const Player = forwardRef(function Player({ game, paused, muted, onLoaded
   }), [game.id]);
   useEffect(() => {
     if (game.system === 'nes') {
-      let cancelled = false;
+      let cancelled = false,audio=null,instance=null;
       (async () => {
         try {
           const {bytes} = await readRom(game.id);
@@ -64,17 +65,22 @@ export const Player = forwardRef(function Player({ game, paused, muted, onLoaded
             onBatteryRamWrite: () => {if(!nes.current?.nes.rom.batteryRam)return;nesSave.current.dirty=true;clearTimeout(nesSave.current.timer);nesSave.current.timer=setTimeout(()=>flushNes().catch(error=>callbacks.current.onError(error.message)),300);} });
           // The parent owns controller routing, including the review chord.
           emulator._gamepadPolling.stop();
-          // Audio starvation must not change game speed. The frame timer owns pacing.
-          emulator._speakers.onBufferUnderrun = null;
+          // Initialize output before loadROM resets the APU using opts.sampleRate.
+          instance=emulator;
+          audio=createNesAudio(error=>callbacks.current.onError(error.message));
+          emulator._speakers=audio;
+          await audio.ready;
+          if(cancelled)return;
+          emulator.nes.opts.sampleRate=audio.sampleRate;
+          emulator.nes.opts.onAudioSample=(left,right)=>audio.writeSample(left,right);
           document.removeEventListener('keydown', emulator.keyboard.handleKeyDown);
           document.removeEventListener('keyup', emulator.keyboard.handleKeyUp);
           document.removeEventListener('keypress', emulator.keyboard.handleKeyPress);
           emulator._frameTimer = createNesFrameTimer(emulator._frameTimer);
           const generate = emulator._frameTimer.onGenerateFrame;
-          const audio = emulator.nes.opts.onAudioSample;
-          emulator.nes.opts.onAudioSample = (left, right) => audio(silence.current || speed.current > 1 ? 0 : left, silence.current || speed.current > 1 ? 0 : right);
           let frames = 0;
           emulator._frameTimer.onGenerateFrame = () => {
+            audio.setSilent(silence.current || speed.current > 1);
             for (let i = 0; i < speed.current; i++) { generate(); frames++; }
             if (container.current) container.current.dataset.frames = frames;
           };
@@ -86,7 +92,7 @@ export const Player = forwardRef(function Player({ game, paused, muted, onLoaded
           callbacks.current.onLoaded();
         } catch (error) { callbacks.current.onError(error.message); }
       })();
-      return () => { cancelled = true; flushNes().catch(()=>{});nes.current?.destroy();nes.current=null; };
+      return () => { cancelled = true; flushNes().catch(()=>{});instance?.destroy();audio?.destroy();if(nes.current===instance)nes.current=null; };
     }
     let loaded = false, cancelled = false, requested = false;
     const listener = async event => {
