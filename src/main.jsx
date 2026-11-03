@@ -62,7 +62,7 @@ function App() {
   const [muted, setMuted] = useState(() => localStorage.getItem('games-reducer-muted') === 'true');
   const [touchPanels, setTouchPanels] = useState({p1:false,p2:false});
   useEffect(() => { localStorage.setItem('games-reducer-muted', String(muted)); }, [muted]);
-  const turbo = useRef({ pad: false, keyboard: false, ui:false, active: false });
+  const turbo = useRef({ pad: false, keyboard: false, ui:false, uiKey:false, active: false });
   const expanding = useRef(false);
   const player = useRef(null), actions = useRef({}), starting = useRef(false), dialog = useRef(null), activeKeys = useRef(new Set());
   const metadataAttempts = useRef(new Set());
@@ -91,17 +91,19 @@ function App() {
   }, []);
 
   function releaseKeys() {
-    turbo.current.pad = false; turbo.current.keyboard = false; turbo.current.ui=false; updateSpeed();
+    turbo.current.pad = false; turbo.current.keyboard = false; turbo.current.ui=false; turbo.current.uiKey=false; updateSpeed();
     for (const code of activeKeys.current) player.current?.key(code, false);
     activeKeys.current.clear();
   }
   function updateSpeed() {
-    const held = framePhase.current === 'playing' && (turbo.current.pad || turbo.current.keyboard || turbo.current.ui);
+    const held = framePhase.current === 'playing' && (turbo.current.pad || turbo.current.keyboard || turbo.current.ui || turbo.current.uiKey);
     if (held === turbo.current.active) return;
     turbo.current.active = held; player.current?.fastForward(held); setFastForward(held);
   }
   function keyboardSpeed(held) { turbo.current.keyboard = held; updateSpeed(); }
   function buttonSpeed(held){turbo.current.ui=held;updateSpeed();}
+  function buttonKeySpeed(held){turbo.current.uiKey=held;updateSpeed();}
+  function clearKeyboardSpeed(){keyboardSpeed(false);buttonKeySpeed(false);}
   function navigate(next){if(next!=='player')review();setModal(null);setExpanded(false);setRoute(next);refresh().catch(e=>setError(e.message));}
   useEffect(()=>{if(route!=='player'){review();refresh().catch(e=>setError(e.message));}},[route]);
   function review() {
@@ -154,6 +156,7 @@ function App() {
     } catch (e) { setError(e.message); }
     finally { setBusy(false); starting.current = false; }
   }
+  function reviewDecision(status){return selection.count?decideSelected(status):decide(status);}
   async function decideSelected(status){
     if(busy||starting.current||!selection.count)return;
     const ids=[...selection.selected];setBusy(true);setError('');
@@ -204,7 +207,7 @@ function App() {
     finally{setBusy(false);}
   }
   function appShortcut(code){
-    const shortcuts={Digit1:()=>decide('keep'),Digit2:()=>decide('discard'),Digit3:()=>decide('skip'),KeyL:()=>{if(route!=='player'){navigate('player');setSidebarHidden(false);}else setSidebarHidden(v=>!v);},KeyV:()=>{if(route==='player')setSidebarView(v=>v==='list'?'grid':'list');},KeyG:()=>navigate('games'),KeyP:()=>navigate('player'),KeyS:()=>openPanel('settings'),KeyM:()=>setMuted(v=>!v),KeyU:undo,KeyK:()=>{if(route==='player')setSidebarHidden(false);requestAnimationFrame(()=>document.querySelector(route==='games'?'input[aria-label="Search library"]':'input[aria-label="Find a game"]')?.focus());}};
+    const shortcuts={Digit1:()=>reviewDecision('keep'),Digit2:()=>reviewDecision('discard'),Digit3:()=>reviewDecision('skip'),KeyL:()=>{if(route!=='player'){navigate('player');setSidebarHidden(false);}else setSidebarHidden(v=>!v);},KeyV:()=>{if(route==='player')setSidebarView(v=>v==='list'?'grid':'list');},KeyG:()=>navigate('games'),KeyP:()=>navigate('player'),KeyS:()=>openPanel('settings'),KeyM:()=>setMuted(v=>!v),KeyU:undo,KeyK:()=>{if(route==='player')setSidebarHidden(false);requestAnimationFrame(()=>document.querySelector(route==='games'?'input[aria-label="Search library"]':'input[aria-label="Find a game"]')?.focus());}};
     shortcuts[code]?.();
   }
   function toggleShortcuts(){if(modal==='shortcuts')setModal(null);else openPanel('shortcuts');}
@@ -305,9 +308,9 @@ function App() {
     document.addEventListener('fullscreenchange', changed);
     return () => document.removeEventListener('fullscreenchange', changed);
   }, []);
-  function resume() { setPhase('playing'); framePhase.current = 'playing'; }
+  function resume() { releaseKeys(); setPhase('playing'); framePhase.current = 'playing'; }
   mode.current = busy ? 'busy' : modal || route!=='player' ? 'modal' : phase;
-  actions.current = { shortcut:appShortcut, review, play: () => playGame(), keep: () => decide('keep'), discard: () => decide('discard'), skip: () => decide('skip'), resume, undo, finish,
+  actions.current = { shortcut:appShortcut, review, play: () => playGame(), keep: () => reviewDecision('keep'), discard: () => reviewDecision('discard'), skip: () => reviewDecision('skip'), resume, undo, finish,
     next: () => moveSelection(1), previous: () => moveSelection(-1),
     pageNext: () => moveSelection(20), pagePrevious: () => moveSelection(-20),
     menu: () => setModal('controller'), fullscreen: toggleFullscreen,
@@ -364,11 +367,11 @@ function App() {
       if(!editing&&e.code==='KeyF'&&!e.repeat){e.preventDefault();expanded&&!document.fullscreenElement?nativeFullscreen():toggleFullscreen();return;}
       if(route!=='player')return;
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName) && e.code !== 'Escape') return;
-      if (e.code === 'Tab' && phase === 'playing') { e.preventDefault(); keyboardSpeed(true); return; }
+      if (e.code === 'Tab' && phase === 'playing' && !modal && !busy && !e.target.closest('button,a,[role=checkbox],[role=combobox]')) { e.preventDefault(); if(!e.repeat)keyboardSpeed(true); return; }
       if (e.repeat) return;
       if (e.code === 'KeyF') { e.preventDefault(); expanded && !document.fullscreenElement ? nativeFullscreen() : toggleFullscreen(); return; }
       if (e.code === 'Escape') { e.preventDefault(); modal ? actions.current.close() : phase === 'playing' ? review() : phase === 'decision' ? resume() : null; return; }
-      if (modal || busy) return;
+      if (modal || busy || e.target.closest('button,a,[role=checkbox],[role=combobox]')) return;
       if (phase === 'ready') {
         const horizontal = window.matchMedia('(max-width:900px)').matches;
         const action = { Enter: 'play', ArrowDown: 'next', ArrowUp: 'previous', ArrowRight: horizontal ? 'next' : null, ArrowLeft: horizontal ? 'previous' : null, KeyU: 'undo' }[e.code];
@@ -378,12 +381,13 @@ function App() {
         if (action) { e.preventDefault(); actions.current[action](); }
       } else if (phase === 'playing') player.current?.key(e.code, true, 'keyboard');
     };
-    const keyup = e => { if(e.code==='AltLeft'||e.code==='AltRight')setShortcutHints(false);if (e.code === 'Tab') keyboardSpeed(false); if (phase === 'playing') player.current?.key(e.code, false, 'keyboard'); };
+    // Capture releases before list rows and menus stop propagation; focus can move while a key is held.
+    const keyup = e => { if(e.code==='AltLeft'||e.code==='AltRight')setShortcutHints(false);if (e.code === 'Tab') keyboardSpeed(false);if(['Enter','Space'].includes(e.code))buttonKeySpeed(false); if (phase === 'playing') player.current?.key(e.code, false, 'keyboard'); };
     const visibility = () => { if (document.hidden){setShortcutHints(false);review();} };
-    const blur=()=>{setShortcutHints(false);buttonSpeed(false);keyboardSpeed(false);};
-    window.addEventListener('keydown', keydown); window.addEventListener('keyup', keyup); document.addEventListener('visibilitychange', visibility);
+    const blur=()=>{setShortcutHints(false);buttonSpeed(false);clearKeyboardSpeed();};
+    window.addEventListener('keydown', keydown); window.addEventListener('keyup', keyup,true);document.addEventListener('focusout',clearKeyboardSpeed); document.addEventListener('visibilitychange', visibility);
     window.addEventListener('blur',blur);window.addEventListener('keydown',hints,true);window.addEventListener('keyup',hints,true);
-    return () => { window.removeEventListener('keydown',hints,true);window.removeEventListener('keyup',hints,true);window.removeEventListener('blur',blur);window.removeEventListener('keydown', keydown); window.removeEventListener('keyup', keyup); document.removeEventListener('visibilitychange', visibility); };
+    return () => { window.removeEventListener('keydown',hints,true);window.removeEventListener('keyup',hints,true);window.removeEventListener('blur',blur);window.removeEventListener('keydown', keydown); window.removeEventListener('keyup', keyup,true);document.removeEventListener('focusout',clearKeyboardSpeed); document.removeEventListener('visibilitychange', visibility); };
   }, [phase, modal, busy, expanded,route]);
   useEffect(() => {
     if (!playing) return;
@@ -413,19 +417,21 @@ function App() {
       <h1 className="header-title" title={current?.title}>{route==='games'?'Games':current?.title || 'Choose a game'}</h1>
       {route==='player'&&<button className="icon-button" aria-label="Game information" title="Game information" disabled={!current} onClick={() => { if (phase === 'playing') review(); setModal('info'); }}><Info size={19}/></button>}
       </div>
-      {route!=='player'&&<nav className="route-navigation" aria-label="Main navigation">{[['player','Player'],['games','Games']].map(([key,label])=><a key={key} href={routePath(key)} aria-current={route===key?'page':undefined} onClick={e=>{e.preventDefault();navigate(key);}}>{label}</a>)}</nav>}
-      <div className="header-playback" role="group" aria-label="Playback controls" hidden={route!=='player'}>
-      <span className={`header-status ${phase === 'decision' ? 'paused' : 'quiet-status'}`}>{playing ? phase === 'decision' ? 'Paused' : `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}` : current ? labels[current.status] : ''}</span>
-      {(phase === 'playing' || phase === 'decision') && <div className="header-decisions" role="group" aria-label="Review game">
-        <button className="keep" data-shortcut={phase==='decision'?'1':'Alt+1'} aria-label="Keep game" title="Keep · A / 1" disabled={busy} onClick={() => decide('keep')}><Check size={18}/><span>Keep</span></button>
-        <button className="discard" data-shortcut={phase==='decision'?'2':'Alt+2'} aria-label="Mark game for removal" title="Mark for removal · B / 2" disabled={busy} onClick={() => decide('discard')}><Trash2 size={18}/><span>Remove</span></button>
-        <button data-shortcut={phase==='decision'?'3':'Alt+3'} aria-label="Try game later" title="Later · X / 3" disabled={busy} onClick={() => decide('skip')}><SkipForward size={18}/><span>Later</span></button>
+      {route!=='player'&&!selection.count&&<nav className="route-navigation" aria-label="Main navigation">{[['player','Player'],['games','Games']].map(([key,label])=><a key={key} href={routePath(key)} aria-current={route===key?'page':undefined} onClick={e=>{e.preventDefault();navigate(key);}}>{label}</a>)}</nav>}
+      <div className="header-playback" role="group" aria-label="Playback controls" hidden={route!=='player'&&!selection.count}>
+      <span className={`header-status ${phase === 'decision' ? 'paused' : 'quiet-status'}`}>{selection.count?`${selection.count} selected`:playing ? phase === 'decision' ? 'Paused' : `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}` : current ? labels[current.status] : ''}</span>
+      {(selection.count>0 || phase === 'playing' || phase === 'decision') && <div className="header-decisions" role="group" aria-label={selection.count?`Review ${selection.count} selected games`:'Review game'}>
+        <button className="keep" data-shortcut={phase==='decision'?'1':'Alt+1'} aria-label={selection.count?`Keep (${selection.count} selected games)`:'Keep game'} title={selection.count?`Keep: ${selection.count} selected games`:'Keep · A / 1'} disabled={busy||phase==='loading'} onClick={() => reviewDecision('keep')}><Check size={18}/><span>Keep</span></button>
+        <button className="discard" data-shortcut={phase==='decision'?'2':'Alt+2'} aria-label={selection.count?`Mark for removal (${selection.count} selected games)`:'Mark game for removal'} title={selection.count?`Mark for removal: ${selection.count} selected games`:'Mark for removal · B / 2'} disabled={busy||phase==='loading'} onClick={() => reviewDecision('discard')}><Trash2 size={18}/><span>Remove</span></button>
+        <button data-shortcut={phase==='decision'?'3':'Alt+3'} aria-label={selection.count?`Try later (${selection.count} selected games)`:'Try game later'} title={selection.count?`Try later: ${selection.count} selected games`:'Later · X / 3'} disabled={busy||phase==='loading'} onClick={() => reviewDecision('skip')}><SkipForward size={18}/><span>Later</span></button>
       </div>}
-        {playing&&<button className="icon-button hold-turbo" data-shortcut="Tab" aria-label="Hold to fast-forward" title="Hold for 3× speed · RT / Tab" aria-pressed={fastForward} disabled={phase!=='playing'} onPointerDown={e=>{if(e.button!==0)return;e.preventDefault();e.currentTarget.setPointerCapture(e.pointerId);buttonSpeed(true);}} onPointerUp={()=>buttonSpeed(false)} onPointerCancel={()=>buttonSpeed(false)} onLostPointerCapture={()=>buttonSpeed(false)} onBlur={()=>buttonSpeed(false)} onKeyDown={e=>{if(['Space','Enter'].includes(e.code)){e.preventDefault();e.stopPropagation();buttonSpeed(true);}}} onKeyUp={e=>{if(['Space','Enter'].includes(e.code)){e.preventDefault();e.stopPropagation();buttonSpeed(false);}}}><FastForward size={18}/></button>}
+        {route==='player'&&<>
+        {playing&&<button className="icon-button hold-turbo" data-shortcut="Tab" aria-label="Hold to fast-forward" title="Hold for 3× speed · RT / Tab" aria-pressed={fastForward} disabled={phase!=='playing'} onPointerDown={e=>{if(e.button!==0)return;e.preventDefault();e.currentTarget.setPointerCapture(e.pointerId);buttonSpeed(true);}} onPointerUp={()=>buttonSpeed(false)} onPointerCancel={()=>buttonSpeed(false)} onLostPointerCapture={()=>buttonSpeed(false)} onBlur={()=>{buttonSpeed(false);buttonKeySpeed(false);}} onKeyDown={e=>{if(['Space','Enter'].includes(e.code)){e.preventDefault();e.stopPropagation();if(!e.repeat)buttonKeySpeed(true);}}} onKeyUp={e=>{if(['Space','Enter'].includes(e.code)){e.preventDefault();e.stopPropagation();buttonKeySpeed(false);}}}><FastForward size={18}/></button>}
         {phase === 'ready' && <button className="icon-button" data-shortcut="Enter" aria-label="Play game" title="Play" disabled={!current || busy || current.missing || isBlocked(current)} onClick={() => playGame()}><Play size={20}/></button>}
         {playing && <button className="icon-button" title="Back to library" aria-label="Stop game" onClick={() => stopPlayer().catch(e => setError(e.message))}><Square size={18}/></button>}
         {phase === 'playing' && <button className="icon-button" data-shortcut="Esc" aria-label="Review game" title="Review · Back + Start / Esc" onClick={review}><Pause size={20}/></button>}
         {phase === 'decision' && <button className="icon-button" data-shortcut="Enter" aria-label="Resume game" title="Resume" onClick={resume}><Play size={20}/></button>}
+        </>}
       </div>
       <div className="top-actions">
         <button className="icon-button touch-toggle red" aria-label="Player 1 controller" title="Player 1 · red controller" aria-pressed={touchPanels.p1} onClick={() => setTouchPanels(p => ({...p,p1:!p.p1}))}><Gamepad2 size={19}/><small>1</small></button>

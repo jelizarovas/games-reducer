@@ -119,7 +119,7 @@
     if (event.code === 'Escape') { event.preventDefault(); event.stopImmediatePropagation(); send('review'); }
     remapKeyboard(event);
   }, true);
-  window.addEventListener('keyup', event => { if(event.code==='AltLeft'||event.code==='AltRight')send('shortcut-hints',{held:false});if (event.code === 'Tab') { event.preventDefault(); send('fast-forward', { held: false }); }remapKeyboard(event); }, true);
+  window.addEventListener('keyup', event => { if(event.code==='AltLeft'||event.code==='AltRight')send('shortcut-hints',{held:false});if (event.code === 'Tab') { event.preventDefault(); event.stopImmediatePropagation(); send('fast-forward', { held: false }); return; }remapKeyboard(event); }, true);
   window.addEventListener('blur', () => { fastForward(false); send('fast-forward', { held: false });send('shortcut-hints',{held:false}); });
   // winit deliberately throws this sentinel after taking ownership of its event loop.
   const sentinel = "Using exceptions for control flow, don't mind me. This isn't actually an error!";
