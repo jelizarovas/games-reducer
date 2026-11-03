@@ -1,7 +1,6 @@
 // One animation loop owns NES pacing. Never queue delayed catch-up frames:
 // they can run after a later animation frame and put the old timer ahead of time.
-export function createNesFrameTimer({onGenerateFrame,onWriteFrame,requestFrame=callback=>window.requestAnimationFrame(callback),cancelFrame=id=>window.cancelAnimationFrame(id)}){
-  const interval=1000/60.098;
+export function createNesFrameTimer({onGenerateFrame,onWriteFrame,requestFrame=callback=>window.requestAnimationFrame(callback),cancelFrame=id=>window.cancelAnimationFrame(id),frameRate=()=>60.098}){
   let pending=null,last=null,accumulated=0,running=false,generation=0;
   const timer={onGenerateFrame,onWriteFrame,
     start(){if(running)return;running=true;last=null;accumulated=0;const token=++generation;pending=requestFrame(time=>tick(time,token));},
@@ -10,6 +9,7 @@ export function createNesFrameTimer({onGenerateFrame,onWriteFrame,requestFrame=c
   function tick(time,token){
     if(!running||token!==generation)return;
     pending=null;
+    const interval=1000/frameRate();
     if(last!==null){
       // Drop excess debt after a stalled tab instead of racing to catch up.
       accumulated=Math.min(interval*2,accumulated+Math.max(0,time-last));

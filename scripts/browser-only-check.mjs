@@ -111,12 +111,12 @@ try{
   // Review handoff must run the next game, not merely change the header/phase.
   await page.getByRole('button',{name:data.games.find(g=>g.system==='snes').title,exact:true}).click();await playing();
   await page.getByRole('button',{name:'Keep game',exact:true}).click();await page.locator('iframe[title="Playing Sonic The Hedgehog 2"]').waitFor();await playing();
-  await page.frames().find(f=>f.url().includes('/play.html')).waitForFunction(()=>window.reducerRuntimeState().renderedFrames>120&&!window.reducerRuntimeState().paused,{},{timeout:30000});
-  const nextEngine=page.frames().find(f=>f.url().includes('/play.html'));assert.equal(await page.evaluate(()=>document.activeElement.tagName),'IFRAME');assert.equal(await nextEngine.evaluate(()=>document.activeElement.tagName),'CANVAS');
+  await page.frames().find(f=>(f.url().includes('/play.html')||f.url().includes('/worker-player.html'))).waitForFunction(()=>window.reducerRuntimeState().renderedFrames>120&&!window.reducerRuntimeState().paused,{},{timeout:30000});
+  const nextEngine=page.frames().find(f=>(f.url().includes('/play.html')||f.url().includes('/worker-player.html')));assert.equal(await page.evaluate(()=>document.activeElement.tagName),'IFRAME');assert.equal(await nextEngine.evaluate(()=>document.activeElement.tagName),'CANVAS');
   await page.locator('.game-row').last().click({modifiers:['Shift']});await selectionCount(1);assert.ok(page.frames().includes(nextEngine));await playing();await selectAction('Clear selection');await nextEngine.locator('canvas').focus();
   const otherTitle=data.games.find(g=>g.system==='nes').title;
   await page.getByRole('button',{name:otherTitle,exact:true}).click({modifiers:['Shift']});await page.getByRole('button',{name:'Try later (1 selected games)',exact:true}).click();await playing();assert.ok(page.frames().includes(nextEngine),'Bulk review of other games preserves running emulator');await undoBatch();await playing();await nextEngine.locator('canvas').focus();
-  await nextEngine.evaluate(()=>{window.keysObserved=[];document.querySelector('canvas').addEventListener('keydown',e=>window.keysObserved.push(e.code));});
+  await nextEngine.evaluate(()=>{window.keysObserved=[];const post=Worker.prototype.postMessage;Worker.prototype.postMessage=function(message,...args){if(message.type==='key'&&message.down)window.keysObserved.push(message.code);return post.call(this,message,...args);};});
   for(const key of ['KeyZ','KeyX','KeyC','KeyA','KeyS','KeyD'])await page.keyboard.press(key);
   assert.deepEqual(await nextEngine.evaluate(()=>window.keysObserved),['KeyA','KeyS','KeyD','KeyQ','KeyW','KeyE']);
   await page.evaluate(()=>{document.body.tabIndex=-1;document.body.focus();});await page.keyboard.press('KeyZ');await page.waitForTimeout(100);assert.equal(await nextEngine.evaluate(()=>window.keysObserved.at(-1)),'KeyA');
@@ -144,15 +144,24 @@ try{
       await page.getByRole('button',{name:'Review game',exact:true}).click();await page.waitForFunction(()=>document.querySelector('.nes-canvas')?.dataset.paused==='true');const pausedFrames=(await sample()).frames;await page.waitForTimeout(150);assert.equal((await sample()).frames,pausedFrames);await page.getByRole('button',{name:'Resume game',exact:true}).click();await playing();await checkRate('after resume');assert.equal(await page.evaluate(()=>window.audioContexts.at(-1)===window.nesAudioContextBeforePause),true,'Pause/resume reuses the output context and sample rate');console.log('PASS NES audio matches device rate, has no startup underruns, and reuses context across pause');
     }
 
-    if(system!=='nes'){const engine=page.frames().find(f=>f.url().includes('/play.html'));assert.ok(engine.url().includes('/engine-'),'Emulator URLs are content-versioned');assert.equal(await engine.evaluate(()=>crossOriginIsolated),true);}
-    if(system!=='nes')await page.frames().find(f=>f.url().includes('/play.html')).waitForFunction(()=>window.reducerRuntimeState().renderedFrames>250,{},{timeout:30000});await page.waitForTimeout(300);await page.screenshot({path:path.join(run,`${system}.png`)});
+    if(system!=='nes'){const engine=page.frames().find(f=>(f.url().includes('/play.html')||f.url().includes('/worker-player.html')));assert.ok((await engine.evaluate(()=>window.reducerRuntimeState().saveStoreUrl)).includes('/engine-'),'Emulator assets are content-versioned');assert.equal(await engine.evaluate(()=>crossOriginIsolated),true);}
+    if(system!=='nes'){
+      const engine=page.frames().find(f=>f.url().includes('/worker-player.html'));
+      await engine.waitForFunction(()=>window.reducerRuntimeState().audioHealth?.buffered>0);
+      const before=await engine.evaluate(()=>window.reducerRuntimeState());assert.equal(before.worker,true);assert.equal(before.audioHealth.underruns,0);
+      await page.evaluate(()=>{const until=performance.now()+1800;while(performance.now()<until){}});await page.waitForTimeout(1200);
+      const after=await engine.evaluate(()=>window.reducerRuntimeState());assert.ok(after.renderedFrames-before.renderedFrames>140);assert.equal(after.audioHealth.underruns,0,'Worker audio survives blocked UI');
+      await page.getByRole('button',{name:'More actions',exact:true}).click();await page.getByRole('menuitem',{name:'Show FPS counter'}).click();await page.waitForTimeout(2200);assert.match(await page.getByLabel('Performance counter').innerText(),/Audio .*0 gaps/);await page.getByRole('button',{name:'More actions',exact:true}).click();await page.getByRole('menuitem',{name:'Hide FPS counter'}).click();
+      console.log('PASS worker playback, audio diagnostics and UI-stall isolation:',system);
+    }
+    if(system!=='nes')await page.frames().find(f=>(f.url().includes('/play.html')||f.url().includes('/worker-player.html'))).waitForFunction(()=>window.reducerRuntimeState().renderedFrames>250,{},{timeout:30000});await page.waitForTimeout(300);await page.screenshot({path:path.join(run,`${system}.png`)});
     await page.getByRole('button',{name:'Mute sound',exact:true}).click();await playing();await page.getByRole('button',{name:'Unmute sound',exact:true}).click();
     await filterChoice('Category','Uncategorized');await playing();assert.equal(await page.locator('.game-row').count(),0);
     await filterChoice('Category','All categories');
     await page.getByRole('button',{name:'Review game',exact:true}).click();await page.getByRole('button',{name:'Resume game',exact:true}).click();await playing();
-    const speed=()=>system==='nes'?page.locator('.nes-canvas').getAttribute('data-speed').then(Number):page.frames().find(f=>f.url().includes('/play.html')).evaluate(()=>window.reducerRuntimeState().speed);
+    const speed=()=>system==='nes'?page.locator('.nes-canvas').getAttribute('data-speed').then(Number):page.frames().find(f=>(f.url().includes('/play.html')||f.url().includes('/worker-player.html'))).evaluate(()=>window.reducerRuntimeState().speed);
     const fast=await page.getByRole('button',{name:'Hold to fast-forward',exact:true}).boundingBox();await page.mouse.move(fast.x+15,fast.y+15);await page.mouse.down();await page.waitForTimeout(180);assert.equal(await speed(),3);await page.mouse.move(10,100);await page.mouse.up();await page.waitForTimeout(180);assert.equal(await speed(),1);
-    const focusGame=()=>system==='nes'?page.locator('.nes-canvas canvas').focus():page.frames().find(f=>f.url().includes('/play.html')).locator('canvas').focus();
+    const focusGame=()=>system==='nes'?page.locator('.nes-canvas canvas').focus():page.frames().find(f=>(f.url().includes('/play.html')||f.url().includes('/worker-player.html'))).locator('canvas').focus();
     await focusGame();await page.keyboard.down('Tab');await page.waitForTimeout(100);assert.equal(await speed(),3);
     await page.getByRole('button',{name:g.title,exact:true}).focus();await page.keyboard.up('Tab');await page.waitForTimeout(100);assert.equal(await speed(),1,'Tab release over a row must clear turbo');await page.keyboard.press('Enter');await playing();assert.equal(await speed(),1,'Enter after Tab must not rearm turbo');
     await focusGame();await page.keyboard.down('Tab');await page.waitForTimeout(80);await page.getByRole('textbox',{name:'Find a game',exact:true}).focus();await page.keyboard.up('Tab');await page.waitForTimeout(100);assert.equal(await speed(),1);
@@ -160,7 +169,7 @@ try{
     await focusGame();await page.keyboard.down('Tab');await page.waitForTimeout(80);await page.keyboard.press('Escape');await page.keyboard.up('Tab');await page.getByRole('button',{name:'Resume game',exact:true}).click();await playing();await page.waitForTimeout(100);assert.equal(await speed(),1,'Resume must start at normal speed');
     console.log('PASS Tab/Enter/focus changes and pause/resume never latch turbo:',system);
     if(system==='megadrive'){
-      const engine=page.frames().find(f=>f.url().includes('/play.html'));await engine.evaluate(()=>window.routeSentinel='preserved');
+      const engine=page.frames().find(f=>(f.url().includes('/play.html')||f.url().includes('/worker-player.html')));await engine.evaluate(()=>window.routeSentinel='preserved');
       assert.equal(await page.getByRole('combobox',{name:'Sort games',exact:true}).locator('.dropdown-arrow').count(),0);assert.equal(await page.getByRole('button',{name:'Filters',exact:true}).locator('.dropdown-arrow').count(),0);
       const sidebar=page.getByRole('complementary',{name:'Game library'}),resize=page.getByRole('separator',{name:'Resize game library'});
       const before=await sidebar.boundingBox(),handle=await resize.boundingBox();await page.mouse.move(handle.x+4,handle.y+80);await page.mouse.down();await page.mouse.move(handle.x+144,handle.y+80);await page.mouse.up();assert.ok((await sidebar.boundingBox()).width>before.width+100);await playing();
@@ -174,14 +183,14 @@ try{
     }
     if(system!=='nes'){
       await page.getByRole('button',{name:'Review game',exact:true}).click();
-      await page.frames().find(f=>f.url().includes('/play.html')).evaluate(async()=>{const saves=await import(new URL('save-store.js',location.href).href),bytes=new Uint8Array(8192);bytes.set([11,22,33,44]);await saves.writeSaveFile(window.reducerChannel.current_file_name(),'sav',bytes);await window.reducerFlushSaves();});
+      await page.frames().find(f=>(f.url().includes('/play.html')||f.url().includes('/worker-player.html'))).evaluate(async()=>{const saves=await import(window.reducerRuntimeState().saveStoreUrl||new URL('save-store.js',location.href).href),bytes=new Uint8Array(8192);bytes.set([11,22,33,44]);await saves.writeSaveFile(window.reducerChannel.current_file_name(),'sav',bytes);await window.reducerFlushSaves();});
     }
     await page.getByRole('button',{name:'Stop game',exact:true}).click();console.log('PASS browser-only playback, mute, pause/resume and live filters:',system);
   }
   await context.setOffline(false);console.log('PASS offline cold reload, /games route, and all three emulators without network');
   if(!process.env.BROWSER_URL){
     await page.getByRole('button',{name:data.games.find(g=>g.system==='megadrive').title,exact:true}).click();await playing();
-    const engine=page.frames().find(f=>f.url().includes('/play.html'));await engine.evaluate(()=>window.updateSentinel='running');
+    const engine=page.frames().find(f=>(f.url().includes('/play.html')||f.url().includes('/worker-player.html')));await engine.evaluate(()=>window.updateSentinel='running');
     workerRevision++;await page.evaluate(async()=>{const registration=await navigator.serviceWorker.getRegistration();await registration.update();});
     await page.waitForFunction(async()=>!!(await navigator.serviceWorker.getRegistration()).waiting,{},{timeout:60000});
     assert.equal(await engine.evaluate(()=>window.updateSentinel),'running');await playing();

@@ -29,7 +29,7 @@ const InlinePlayer = forwardRef(function Player({ game, paused, muted, onLoaded,
   const callbacks = useRef({}); callbacks.current = { onLoaded, onReview, onError, onFullscreen, onFastForward,onShortcutHints,onShortcuts,onShortcut };
   const send = message => frame.current?.contentWindow?.postMessage({ source: 'games-reducer', ...message }, location.origin);
   useImperativeHandle(ref, () => ({
-    getDiagnostics(){if(game.system==='nes')return {frames:Number(container.current?.dataset.frames||0),speed:speed.current,audio:nes.current?._speakers.stats};const runtime=frame.current?.contentWindow?.reducerRuntimeState?.();return runtime?{frames:runtime.renderedFrames,speed:runtime.speed}:null;},
+    getDiagnostics(){if(game.system==='nes')return {frames:Number(container.current?.dataset.frames||0),speed:speed.current,audio:nes.current?._speakers.stats};const runtime=frame.current?.contentWindow?.reducerRuntimeState?.();return runtime?{frames:runtime.renderedFrames,speed:runtime.speed,audio:runtime.audioHealth,worker:runtime.worker,timestamp:runtime.timestamp}:null;},
     focus(){if(game.system==='nes'){const canvas=container.current?.querySelector('canvas');if(canvas){canvas.tabIndex=0;canvas.focus();}}else frame.current?.contentWindow?.document.querySelector('canvas')?.focus();},
     async flushSaves(){
       if(game.system==='nes'){nes.current?.stop();return flushNes();}
@@ -140,5 +140,5 @@ const InlinePlayer = forwardRef(function Player({ game, paused, muted, onLoaded,
   }, [paused, game.id]);
   useEffect(() => { send({type:'mute',muted}); }, [muted,game.id]);
   return game.system === 'nes' ? <div className="nes-canvas" data-muted={muted} ref={container} /> :
-    <iframe ref={frame} src={assetUrl(`${__ENGINE_DIRECTORY__}/play.html`)} title={`Playing ${game.title}`} allow="autoplay; gamepad" className="emulator-frame" />;
+    <iframe ref={frame} src={assetUrl(typeof HTMLCanvasElement.prototype.transferControlToOffscreen==='function'?'worker-player.html':`${__ENGINE_DIRECTORY__}/play.html`)} title={`Playing ${game.title}`} allow="autoplay; gamepad" className="emulator-frame" />;
 });

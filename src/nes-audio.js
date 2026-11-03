@@ -1,6 +1,6 @@
 import workletUrl from './nes-audio-worklet.js?worker&url';
 
-export function createNesAudio(onError){
+export function createNesAudio(onError,label="NES"){
   const context=new AudioContext({latencyHint:'interactive'});
   let node=null,running=false,silent=false,disposed=false,position=0;
   const left=new Float32Array(2048),right=new Float32Array(2048);
@@ -14,10 +14,10 @@ export function createNesAudio(onError){
       if(disposed)return;
       node=new AudioWorkletNode(context,'games-reducer-nes-audio',{outputChannelCount:[2]});
       node.port.onmessage=event=>{if(event.data.type==='health')audio.stats=event.data;};
-      node.onprocessorerror=()=>onError(new Error('NES audio stopped unexpectedly. Restart the game to reconnect audio.'));
+      node.onprocessorerror=()=>onError(new Error(`${label} audio stopped unexpectedly. Restart the game to reconnect audio.`));
       node.connect(context.destination);update();
     }),
-    connectSource(port){node.port.postMessage({type:'source',port},[port]);},
+    connectSource(port,feedback=false){node.port.postMessage({type:'source',port,feedback},[port]);},
     start(){if(disposed||running)return;running=true;update();resume();},
     stop(){if(!running)return;running=false;update();},
     setSilent(value){if(silent===value)return;silent=value;update();},

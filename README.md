@@ -105,7 +105,7 @@ Coverage includes all three emulators, held fast-forward/release, route transiti
 
 ## Emulator source
 
-Genesis/SNES use a locally patched [jgenesis](https://github.com/jsgroth/jgenesis/tree/c9ff3184cf1515648576a6641c05a11ef4089fb5) WebGL/WASM build with independent player-two input. NES uses JSNES from npm. The GPL-3.0 license is included at `public/engine/LICENSE`. Matching jgenesis source, local changes, bridge, and build scripts are bundled as `public/engine/corresponding-source.zip`; tool versions and the binary hash are in `public/engine/player-two-build.json`. Build tooling is not needed on the Hub.
+Genesis/SNES use a locally patched [jgenesis](https://github.com/jsgroth/jgenesis/tree/c9ff3184cf1515648576a6641c05a11ef4089fb5) WASM cores with independent player-two input. A small headless adapter in `engine-worker/` runs both cores in a dedicated worker and draws through OffscreenCanvas; the previous WebGL frontend remains a fallback for browsers without OffscreenCanvas. NES uses JSNES from npm. The GPL-3.0 license is included at `public/engine/LICENSE`. Matching jgenesis source, local changes, bridge, and build scripts are bundled as `public/engine/corresponding-source.zip`; tool versions and the binary hash are in `public/engine/player-two-build.json`. The worker artifact and source hashes are in `public/engine/worker/build.json`. Rebuild it with `bash scripts/build-worker-engine.sh`, then `node scripts/package-worker-engine.mjs` and `node scripts/package-engine-source.mjs` (adjust the local WSL paths as needed). Build tooling is not needed on the Hub.
 
 The public source package omits games and private review data. See `docs/legacy-local.md` only for the retired Node edition's historical setup.
 
@@ -115,8 +115,10 @@ Use the checkbox beside Search to select all games matching the current filters.
 
 Unsupported and invalid ROMs identified by the compatibility scan are hidden from browsing. Scan results offer Yes/No to mark them for removal. No leaves review decisions unchanged; Yes marks them for the normal Finish session cleanup without moving or deleting ROMs during scanning. Existing marked games do not prompt again. The NES check detects unsupported mappers and invalid headers; it is not a guarantee that every other game works.
 
-### Performance counter and NES stability
+### Performance counter and playback stability
 
-Use **… → Show FPS counter** to toggle a small overlay; the preference stays in this browser. NES also reports audio buffer depth and detected audio gaps. Normal NES pacing targets about 60.1 emulated frames per second; held fast-forward runs at 3×.
+Use **… → Show FPS counter** to toggle a small overlay; the preference stays in this browser. NES, SNES, and Genesis worker playback report audio buffer depth and detected audio gaps. The FPS reading counts emulated frames. Each core keeps its native timing (roughly 60 FPS for NTSC and 50 FPS for PAL); held fast-forward runs at 3×.
 
-On browsers with OffscreenCanvas support, NES emulation and drawing run in a worker. A direct MessageChannel feeds an AudioWorklet at the device sample rate, isolating audio delivery from library rendering and UI stalls. Older browsers retain the inline renderer. Other console engines are unchanged. The gap counter detects buffer starvation, not every possible audible artifact; original NES sprite limits can still produce game-specific flicker.
+On browsers with OffscreenCanvas support, all three consoles run emulation and drawing in workers. A direct MessageChannel feeds an AudioWorklet at the device sample rate, isolating audio delivery from library rendering and UI stalls. Older browsers retain the inline renderers. SNES/Genesis keep their jgenesis cores, ROM compatibility, two-player mappings, save keys, and backup format. The gap counter detects buffer starvation, not every possible audible artifact; original NES sprite limits can still produce game-specific flicker.
+
+Worker regression coverage includes original Genesis and SNES test cartridges that increment SRAM across boots, read both controller ports independently, and generate audio at 44.1, 48, and 96 kHz. PAL fixtures verify native timing. Browser tests block the UI for 1.8 seconds and require continued worker frames with zero new audio gaps. These tests do not substitute for listening on the physical Hub.
