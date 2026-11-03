@@ -108,3 +108,7 @@ Coverage includes all three emulators, held fast-forward/release, route transiti
 Genesis/SNES use a locally patched [jgenesis](https://github.com/jsgroth/jgenesis/tree/c9ff3184cf1515648576a6641c05a11ef4089fb5) WebGL/WASM build with independent player-two input. NES uses JSNES from npm. The GPL-3.0 license is included at `public/engine/LICENSE`. Matching jgenesis source, local changes, bridge, and build scripts are bundled as `public/engine/corresponding-source.zip`; tool versions and the binary hash are in `public/engine/player-two-build.json`. Build tooling is not needed on the Hub.
 
 The public source package omits games and private review data. See `docs/legacy-local.md` only for the retired Node edition's historical setup.
+
+## Select games
+
+Use the checkbox beside Search to select all games matching the current filters. Its arrow opens Select all, Clear selection, and Invert selection. Shift-click or hold a game for about half a second to enter selection mode; further clicks toggle selection and Shift-click extends a range. Scrolling cancels a pending long press. Clear selection to return to click-to-play. Selection is shared between the sidebar and Games page; games hidden by a new filter are removed from the selection. Selecting games does not change their review status or files.

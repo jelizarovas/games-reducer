@@ -16,7 +16,6 @@ export function FilterMenu({filter,onFilter,category,onCategory,categories,langu
     {groups.map(group=><div key={group.id}>
       <button className="filter-section-trigger" aria-expanded={section===group.id} onClick={()=>setSection(section===group.id?null:group.id)}><span><strong>{group.label}</strong><small>{group.summary}</small></span><ChevronDown size={14}/></button>
       {section===group.id&&<div className="filter-options" role="group" aria-label={group.label}>
-        {group.multiple&&<p className="language-filter-note">Select any languages, including Unknown. Region tags are estimates.</p>}
         {group.options.map(option=>{const selected=group.multiple?group.value.includes(option.value):group.value===option.value;return <button key={option.value} role={group.multiple?'checkbox':'radio'} aria-checked={selected} onClick={()=>group.onChange(option.value)}><span>{option.label}</span><span className="filter-check">{selected&&<Check size={15}/>}</span></button>;})}
       </div>}
     </div>)}

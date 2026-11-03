@@ -6,8 +6,9 @@ import {cardDetails} from './library-view';
 import {isBlocked} from './nes-compatibility';
 import {LanguageFilter} from './LanguageFilter';
 import {FilterMenu} from './FilterMenu';
+import {SelectionToolbar,SelectionMark} from './GameSelection';
 const statuses={unreviewed:'To try',keep:'Keepers',discard:'Marked',skip:'Later',all:'All games'};
-export function GamesPage({games,query,onQuery,filter,onFilter,category,onCategory,categories,language,onLanguage,languages,sort,onSort,onPlay,busy,onSettings}){
+export function GamesPage({selection,games,query,onQuery,filter,onFilter,category,onCategory,categories,language,onLanguage,languages,sort,onSort,onPlay,busy,onSettings}){
   const [view,setView]=useState(()=>localStorage.getItem('games-reducer-view')||'grid');
   const viewport=useRef(null),[position,setPosition]=useState(0),[dimensions,setDimensions]=useState({width:800,height:600});
   const columns=view==='list'?1:Math.max(2,Math.floor(dimensions.width/166)),rowHeight=view==='list'?76:268;
@@ -16,7 +17,7 @@ export function GamesPage({games,query,onQuery,filter,onFilter,category,onCatego
   useEffect(()=>{localStorage.setItem('games-reducer-view',view);},[view]);
   const firstRow=Math.max(0,Math.floor(position/rowHeight)-3),lastRow=Math.min(Math.ceil(games.length/columns),Math.ceil((position+dimensions.height)/rowHeight)+3);
   return <section className="route-surface games-page" aria-label="Games library">
-    <div className="library-page-toolbar">
+    <div className="library-page-toolbar"><SelectionToolbar selection={selection}/>
       <label className="catalog-search"><Search size={18}/><input aria-label="Search library" placeholder="Search games" value={query} onChange={e=>onQuery(e.target.value)}/></label>
       <Dropdown label="Library category" value={category} options={categories} onChange={onCategory}><span>{categories.find(c=>c.value===category)?.label}</span></Dropdown>
       <LanguageFilter value={language} onChange={onLanguage} options={languages}/>
@@ -28,8 +29,8 @@ export function GamesPage({games,query,onQuery,filter,onFilter,category,onCatego
     <div className={`catalog-viewport view-${view}`} ref={viewport} onScroll={e=>setPosition(e.currentTarget.scrollTop)} tabIndex={-1}>
       <div className="catalog-items" style={{gridTemplateColumns:`repeat(${columns},minmax(0,1fr))`}}>
         <div aria-hidden="true" style={{gridColumn:'1 / -1',height:firstRow*rowHeight}}/>
-        {games.slice(firstRow*columns,lastRow*columns).map(game=><button className="catalog-card" key={game.id} aria-label={`Play ${game.title}`} title={isBlocked(game)?game.compatibility.reason:game.title} disabled={busy||game.missing||isBlocked(game)} onClick={()=>onPlay(game)} style={{height:rowHeight}}>
-          <span className="catalog-art"><img loading="lazy" src={thumbnail(game)} alt=""/></span>
+        {games.slice(firstRow*columns,lastRow*columns).map(game=><button className={`catalog-card ${selection.selected.has(game.id)?'batch-selected':''}`} key={game.id} aria-label={`Play ${game.title}`} title={isBlocked(game)?game.compatibility.reason:game.title} disabled={busy} aria-disabled={!selection.count&&(game.missing||isBlocked(game))||undefined} {...selection.bindings(game,onPlay,game.missing||isBlocked(game))} style={{height:rowHeight}}>
+          {selection.count>0&&<SelectionMark checked={selection.selected.has(game.id)}/>}<span className="catalog-art"><img loading="lazy" src={thumbnail(game)} alt=""/></span>
           <span className="catalog-copy"><strong>{game.title}</strong><small title={cardDetails(game)}>{cardDetails(game)}</small><span className={`catalog-status status-${game.status}`}>{statuses[game.status]}{game.missing?' · Missing':''}</span></span>
           <Play className="catalog-play" size={18}/>
         </button>)}

@@ -5,6 +5,7 @@ import { api } from './api';
 import {canQueue,isBlocked} from './nes-compatibility';
 import {matchesLanguage,languageOptions,languageDetails,readLanguages} from './languages';
 import {FilterMenu} from './FilterMenu';
+import {useGameSelection,SelectionToolbar} from './GameSelection';
 import {pickRomFolder} from './browser-library';
 import {thumbnail} from './assets';
 import {BrowserSettings} from './BrowserSettings';
@@ -67,6 +68,8 @@ function App() {
   const current = games.find(g => g.id === selected);
   const visible = useMemo(() => sortGames(games.filter(g => matchesConsole(g, system) && matchesCategory(g, category) && matchesLanguage(g, language) && (filter === 'all' || g.status === filter) &&
     g.title.toLowerCase().includes(query.toLowerCase())), sort), [games, system, category, language, filter, query, sort]);
+
+  const selection=useGameSelection(visible);
 
   async function refresh() {
     const [info, all] = await Promise.all([api('/state'), api('/games')]);
@@ -413,18 +416,18 @@ function App() {
         <SessionMenu onShortcuts={toggleShortcuts} games={games} saveCount={state?.saveCount} onRefresh={()=>refresh().catch(e=>setError(e.message))} onNavigate={navigate} onFinish={finish} onUndo={undo} onController={()=>openPanel('controller')} onSettings={()=>openPanel('settings')} busy={busy}/>
       </div>
     </header>
-    {route==='games'&&<GamesPage games={visible} query={query} onQuery={setQuery} filter={filter} onFilter={chooseFilter} category={category} onCategory={chooseCategory} categories={categoryOptions} language={language} onLanguage={chooseLanguage} languages={languages} sort={sort} onSort={setSort} onPlay={playGame} busy={busy} onSettings={()=>openPanel('settings')}/>}
+    {route==='games'&&<GamesPage selection={selection} games={visible} query={query} onQuery={setQuery} filter={filter} onFilter={chooseFilter} category={category} onCategory={chooseCategory} categories={categoryOptions} language={language} onLanguage={chooseLanguage} languages={languages} sort={sort} onSort={setSort} onPlay={playGame} busy={busy} onSettings={()=>openPanel('settings')}/>}
     {route!=='player'&&error&&!modal&&<div className="alert error" role="alert">{error}<button aria-label="Dismiss error" onClick={()=>setError('')}><X size={16}/></button></div>}
     <div className={`workspace ${sidebarHidden?'sidebar-hidden':''}`} hidden={route!=='player'}>
       <aside id="game-library" className="sidebar" aria-label="Game library" hidden={sidebarHidden}>
         <div className="library-tools">
-          <div className="library-search"><div className="search" data-shortcut="Alt+K"><Search size={17}/><input placeholder="Search games" aria-label="Find a game" value={query} onChange={e => setQuery(e.target.value)}/>
+          <div className="library-search"><div className="search" data-shortcut="Alt+K"><SelectionToolbar selection={selection}/><Search size={17}/><input placeholder="Search games" aria-label="Find a game" value={query} onChange={e => setQuery(e.target.value)}/>
             <Dropdown showArrow={false} label="Sort games" value={sort} onChange={setSort} triggerClassName="search-dropdown" options={[{value:'title',label:'Title A–Z'},{value:'title-desc',label:'Title Z–A'},{value:'year',label:'Oldest first'},{value:'year-desc',label:'Newest first'}]}><ArrowDownUp size={17}/></Dropdown>
             <FilterMenu filter={filter} onFilter={chooseFilter} category={category} onCategory={chooseCategory} categories={categoryOptions} language={language} onLanguage={chooseLanguage} languages={languages}/>
             <button data-shortcut="Alt+V" className="icon-button sidebar-view-toggle" aria-label={sidebarView==='list'?'Show grid view':'Show list view'} title={sidebarView==='list'?'Grid view':'List view'} onClick={()=>setSidebarView(value=>value==='list'?'grid':'list')}>{sidebarView==='list'?<LayoutGrid size={17}/>:<List size={17}/>}</button>
           </div></div>
         </div>
-        <GameList view={sidebarView} games={visible} selected={selected} onPlay={playGame} busy={busy} loading={phase==='loading'} resetKey={JSON.stringify([system,category,language,filter,query,sort])}/>
+        <GameList selection={selection} view={sidebarView} games={visible} selected={selected} onPlay={playGame} busy={busy} loading={phase==='loading'} resetKey={JSON.stringify([system,category,language,filter,query,sort])}/>
         <SidebarResize width={sidebarWidth} height={dockHeight} onWidth={setSidebarWidth} onHeight={setDockHeight}/>
       </aside>
       <main>

@@ -77,12 +77,21 @@ try{
   await page.getByRole('combobox',{name:'Sort games',exact:true}).click();await page.keyboard.press('Shift+Slash');await page.getByRole('dialog',{name:'Keyboard shortcuts',exact:true}).waitFor();await page.keyboard.press('Shift+Slash');assert.equal(await page.getByRole('dialog').count(),0);
   await page.getByRole('combobox',{name:'Sort games',exact:true}).click();await page.keyboard.down('Alt');await page.waitForFunction(()=>document.body.classList.contains('show-shortcuts'));await page.keyboard.up('Alt');await page.keyboard.press('Escape');await page.waitForFunction(()=>!document.body.classList.contains('show-shortcuts'));
   await page.screenshot({path:path.join(run,'library.png')});console.log('PASS folder scan, bundled metadata/artwork, and Pages subpath isolation');
+  const selectAction=async name=>{await page.getByRole('button',{name:'Selection actions',exact:true}).click();await page.getByRole('menuitem',{name,exact:true}).click();};
+  const selectionCount=async count=>assert.equal(await page.getByRole('checkbox',{name:`Select games (${count} selected)`,exact:true}).count(),1);
+  const rows=page.locator('.game-row');await rows.first().click({modifiers:['Shift']});await selectionCount(1);await rows.last().click({modifiers:['Shift']});await selectionCount(3);await selectAction('Invert selection');await selectionCount(0);
+  const rowBox=await rows.first().boundingBox();await page.mouse.move(rowBox.x+20,rowBox.y+20);await page.mouse.down();await page.waitForTimeout(650);await page.mouse.up();await selectionCount(1);assert.equal(await page.getByRole('button',{name:'Stop game',exact:true}).count(),0);
+  await selectAction('Clear selection');await selectAction('Select all');await selectionCount(3);await page.screenshot({path:path.join(run,'selection-desktop.png')});await selectAction('Clear selection');
+  await page.mouse.move(rowBox.x+20,rowBox.y+20);await page.mouse.down();await page.mouse.move(rowBox.x+60,rowBox.y+25);await page.waitForTimeout(650);await page.mouse.up();await selectionCount(0);assert.equal(await page.getByRole('button',{name:'Stop game',exact:true}).count(),0);
+  const touch=await context.newCDPSession(page);await touch.send('Emulation.setTouchEmulationEnabled',{enabled:true});await touch.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:rowBox.x+20,y:rowBox.y+20}]});await page.waitForTimeout(650);await touch.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await selectionCount(1);await touch.send('Emulation.setTouchEmulationEnabled',{enabled:false});await touch.detach();await selectAction('Clear selection');
+  console.log('PASS shift/range selection, mouse and touch long press, drag cancellation, select-all/clear/invert without launch');
   const order=['megadrive','snes','nes'];
   // Review handoff must run the next game, not merely change the header/phase.
   await page.getByRole('button',{name:data.games.find(g=>g.system==='snes').title,exact:true}).click();await playing();
   await page.getByRole('button',{name:'Keep game',exact:true}).click();await page.locator('iframe[title="Playing Sonic The Hedgehog 2"]').waitFor();await playing();
   await page.frames().find(f=>f.url().includes('/play.html')).waitForFunction(()=>window.reducerRuntimeState().renderedFrames>120&&!window.reducerRuntimeState().paused,{},{timeout:30000});
   const nextEngine=page.frames().find(f=>f.url().includes('/play.html'));assert.equal(await page.evaluate(()=>document.activeElement.tagName),'IFRAME');assert.equal(await nextEngine.evaluate(()=>document.activeElement.tagName),'CANVAS');
+  await page.locator('.game-row').last().click({modifiers:['Shift']});await selectionCount(1);assert.ok(page.frames().includes(nextEngine));await playing();await selectAction('Clear selection');await nextEngine.locator('canvas').focus();
   await nextEngine.evaluate(()=>{window.keysObserved=[];document.querySelector('canvas').addEventListener('keydown',e=>window.keysObserved.push(e.code));});
   for(const key of ['KeyZ','KeyX','KeyC','KeyA','KeyS','KeyD'])await page.keyboard.press(key);
   assert.deepEqual(await nextEngine.evaluate(()=>window.keysObserved),['KeyA','KeyS','KeyD','KeyQ','KeyW','KeyE']);
@@ -152,6 +161,7 @@ try{
   await page.getByRole('button',{name:'More actions',exact:true}).click();assert.equal(await page.getByRole('progressbar',{name:'Collection reviewed'}).getAttribute('aria-valuenow'),'33');await page.screenshot({path:path.join(run,'progress-menu.png')});await page.keyboard.press('Escape');
   for(const [width,height]of [[390,844],[320,568],[844,390]]){
     await page.setViewportSize({width,height});
+    await selectAction('Select all');await selectionCount(3);await selectAction('Clear selection');
     for(const view of ['Grid','List']){await page.getByRole('button',{name:view+' view',exact:true}).click();await page.screenshot({path:path.join(run,'games-'+view+'-'+width+'.png')});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));}
     await page.getByRole('button',{name:'More actions',exact:true}).click();await page.screenshot({path:path.join(run,'progress-menu-'+width+'.png')});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.keyboard.press('Escape');
   }
@@ -250,6 +260,8 @@ try{
   // Large-library rendering uses synthetic records in this disposable profile only.
   await page.evaluate(()=>new Promise((resolve,reject)=>{const r=indexedDB.open('games-reducer:/games-reducer/');r.onsuccess=()=>{const db=r.result,tx=db.transaction('library','readwrite'),store=tx.objectStore('library'),get=store.get('state');get.onsuccess=()=>{const state=get.result,base=state.games[0];state.games=Array.from({length:5000},(_,i)=>({...base,id:i.toString(16).padStart(24,'0'),relative_path:'nes/Fixture '+i+'.nes',title:'Fixture '+String(i).padStart(4,'0'),status:'unreviewed'}));store.put(state,'state');};tx.oncomplete=()=>{db.close();resolve();};tx.onerror=()=>reject(tx.error);};}));
   await page.goto(url+'games/');await page.getByRole('region',{name:'Games library',exact:true}).waitFor();
+    await selectAction('Select all');await selectionCount(5000);assert.ok(await page.locator('.catalog-card[aria-pressed=true]').count()<100);await selectAction('Invert selection');await selectionCount(0);
+  const firstCard=await page.locator('.catalog-card').first().boundingBox();await page.keyboard.down('Shift');await page.mouse.click(firstCard.x+20,firstCard.y+20);await page.keyboard.up('Shift');await selectionCount(1);await page.getByRole('textbox',{name:'Search library'}).fill('Fixture 4999');await selectionCount(0);await selectAction('Select all');await selectionCount(1);await selectAction('Clear selection');await page.getByRole('textbox',{name:'Search library'}).fill('');
   for(const view of ['Grid','List']){await page.getByRole('button',{name:view+' view',exact:true}).click();await page.locator('.catalog-card').first().waitFor();assert.ok(await page.locator('.catalog-card').count()<100);await page.locator('.catalog-viewport').evaluate(el=>{el.scrollTop=el.scrollHeight;});await page.getByRole('button',{name:'Play Fixture 4999',exact:true}).waitFor();assert.ok(await page.locator('.catalog-card').count()<100);}
   await page.getByRole('textbox',{name:'Search library'}).fill('Fixture 1234');await page.getByRole('button',{name:'Play Fixture 1234',exact:true}).waitFor();assert.equal(await page.locator('.catalog-card').count(),1);
   console.log('PASS 5,000-game grid/list virtualization, scrolling to the last game and search');

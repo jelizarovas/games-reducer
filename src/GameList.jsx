@@ -3,10 +3,11 @@ import {Gamepad2,Check,Trash2} from 'lucide-react';
 import {cardDetails} from './library-view';
 import {thumbnail} from './assets';
 import {isBlocked} from './nes-compatibility';
+import {SelectionMark} from './GameSelection';
 
 // Fixed row/card extents give continuous scrolling without shifting the viewport
 // when preceding games enter the rendered window.
-export function GameList({games,selected,onPlay,busy,loading,resetKey,view='list'}) {
+export function GameList({selection,games,selected,onPlay,busy,loading,resetKey,view='list'}) {
   const viewport=useRef(null),previousKey=useRef(resetKey);
   const [horizontal,setHorizontal]=useState(()=>matchMedia('(max-width:900px)').matches);
   const [offset,setOffset]=useState(0),[extent,setExtent]=useState(800),[width,setWidth]=useState(256);
@@ -31,8 +32,8 @@ export function GameList({games,selected,onPlay,busy,loading,resetKey,view='list
   const spacer=count=>horizontal?{width:count*itemSize,flex:`0 0 ${count*itemSize}px`}:{height:count*itemSize,gridColumn:'1 / -1'};
   return <div className={`game-list virtual-list sidebar-${view}`} style={{'--list-columns':columns,'--list-item-size':itemSize+'px'}} ref={viewport} onScroll={e=>setOffset(horizontal?e.currentTarget.scrollLeft:e.currentTarget.scrollTop)}>
     <div className="list-spacer" aria-hidden="true" style={spacer(start)}/>
-    {games.slice(start*columns,end*columns).map(game=><button key={game.id} className={`game-row ${selected===game.id?'selected':''}`} aria-label={game.title} aria-current={selected===game.id?'true':undefined} title={isBlocked(game)?game.compatibility.reason:game.title} disabled={busy||loading||game.missing||isBlocked(game)} onClick={()=>onPlay(game)}>
-      <span className="row-art"><Gamepad2 size={22}/><img loading="lazy" src={thumbnail(game)} alt="" onError={e=>{e.currentTarget.hidden=true;}}/></span>
+    {games.slice(start*columns,end*columns).map(game=><button key={game.id} className={`game-row ${selected===game.id?'selected':''} ${selection.selected.has(game.id)?'batch-selected':''}`} aria-label={game.title} aria-current={selected===game.id?'true':undefined} title={isBlocked(game)?game.compatibility.reason:game.title} disabled={busy||loading} aria-disabled={!selection.count&&(game.missing||isBlocked(game))||undefined} {...selection.bindings(game,onPlay,game.missing||isBlocked(game))}>
+      {selection.count>0&&<SelectionMark checked={selection.selected.has(game.id)}/>}<span className="row-art"><Gamepad2 size={22}/><img loading="lazy" src={thumbnail(game)} alt="" onError={e=>{e.currentTarget.hidden=true;}}/></span>
       <span className="row-copy"><span className="row-title">{game.title}</span><small className="row-meta" title={cardDetails(game)}>{cardDetails(game)}</small></span>
       {game.status==='keep'&&<Check size={16} className="green"/>}{game.status==='discard'&&<Trash2 size={15} className="red"/>}
     </button>)}
