@@ -1,4 +1,4 @@
-import {Ellipsis,LogOut,RotateCcw,Menu,Settings2,LayoutGrid,Play,Keyboard,Gauge,Save} from 'lucide-react';
+import {Ellipsis,LogOut,RotateCcw,Menu,Settings2,LayoutGrid,Play,Keyboard,Gauge,Save,House} from 'lucide-react';
 import {Dropdown} from './Dropdown';
 import {summarizeGames,playTime} from './progress';
 import {usePwa} from './PwaControls';
@@ -15,6 +15,7 @@ export function SessionMenu({onSaveStates,canSaveStates,showPerformance,onToggle
   </div>;
   return <Dropdown label="More actions" menu triggerClassName="overflow-trigger" width={288} maxHeight={560} panelHeader={progress} onOpen={onRefresh} options={[
     ...(pwa.update?[{value:'update',label:'Update available',icon:<Settings2 size={17}/>,onSelect:onSettings}]:[]),
+    {value:'home',label:'Home',icon:<House size={17}/>,onSelect:()=>onNavigate('home')},
     {value:'games',label:'Games library',icon:<LayoutGrid size={17}/>,onSelect:()=>onNavigate('games')},
     {value:'player',label:'Player',icon:<Play size={17}/>,onSelect:()=>onNavigate('player')},
     {value:'undo',label:'Undo last decision',icon:<RotateCcw size={17}/>,disabled:busy,onSelect:onUndo},

@@ -54,7 +54,7 @@ self.addEventListener('fetch',event=>{
     let target=core.has(canonical)||covers.has(canonical)?canonical:url.href;
     if(request.mode==='navigate'){
       const relative=url.pathname.slice(scope.pathname.length);
-      if(['','index.html','games','games/','games/index.html'].includes(relative))target=urlFor(relative.startsWith('games')?'games/index.html':'index.html');
+      if(['','index.html','play','play/','play/index.html','games','games/','games/index.html'].includes(relative))target=urlFor(relative.startsWith('games')?'games/index.html':relative.startsWith('play')?'play/index.html':'index.html');
     }
     if(!core.has(target)&&!covers.has(target))return isolated(await fetch(request));
     const cache=await caches.open(cacheName),hit=await cache.match(target);

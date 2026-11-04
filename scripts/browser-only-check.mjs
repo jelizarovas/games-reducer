@@ -60,7 +60,7 @@ try{
     await new Promise((resolve,reject)=>{const r=indexedDB.open('games-reducer:/games-reducer/',1);r.onupgradeneeded=()=>r.result.createObjectStore('library');r.onsuccess=()=>{r.result.close();resolve();};r.onerror=()=>reject(r.error);});
     await new Promise((resolve,reject)=>{const r=indexedDB.open('saves',1);r.onupgradeneeded=()=>r.result.createObjectStore('files',{keyPath:'key'});r.onsuccess=()=>{const db=r.result,tx=db.transaction('files','readwrite');tx.objectStore('files').put({key:'aaaaaaaaaaaaaaaaaaaaaaaa-Legacy.sfc',data:{sav:new Uint8Array([9,8,7])}});tx.oncomplete=()=>{db.close();resolve();};tx.onerror=()=>reject(tx.error);};});
   });
-  await page.goto(url);await page.getByRole('button',{name:'Choose folder',exact:true}).waitFor({timeout:30000});
+  await page.goto(url+'play/');await page.getByRole('button',{name:'Choose folder',exact:true}).waitFor({timeout:30000});
   assert.equal(await page.evaluate(()=>crossOriginIsolated),true,'Service worker supplies isolation without host headers');
   const cdp=await context.newCDPSession(page);const manifest=await cdp.send('Page.getAppManifest');assert.equal(manifest.errors.length,0);assert.equal(JSON.parse(manifest.data).display,'standalone');
   const installability=await cdp.send('Page.getInstallabilityErrors');assert.deepEqual(installability.installabilityErrors.filter(error=>error.errorId!=='in-incognito'),[]);await cdp.detach();
@@ -129,7 +129,7 @@ try{
   await openSettings();await page.getByRole('status').filter({hasText:'App and emulators ready offline.'}).waitFor();
   if(!process.env.BROWSER_URL){await page.getByRole('button',{name:'Download all covers',exact:true}).click();await page.getByRole('button',{name:'All covers saved',exact:true}).waitFor({timeout:180000});}
   await closeDialog();await context.setOffline(true);await page.reload();await page.locator('.game-row').first().waitFor();assert.equal(await page.evaluate(()=>crossOriginIsolated),true);
-  await page.goto(url+'games/');await page.getByRole('region',{name:'Games library',exact:true}).waitFor();await page.goto(url);await page.locator('.game-row').first().waitFor();
+  await page.goto(url+'games/');await page.getByRole('region',{name:'Games library',exact:true}).waitFor();await page.goto(url+'play/');await page.locator('.game-row').first().waitFor();
   for(const system of order){
     const g=data.games.find(g=>g.system===system);
     await page.getByRole('button',{name:g.title,exact:true}).click();await playing();
@@ -221,7 +221,7 @@ try{
   console.log('PASS review persistence, backup export, reload, and protection against concurrent tabs');
   await openSettings();await page.locator('input[type=file]').setInputFiles({name:'invalid.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({...backup,version:999}))});await page.getByRole('alert').filter({hasText:'Not a supported'}).waitFor();assert.equal((await store()).games.find(g=>g.id===nes.id).status,'keep');await page.getByRole('button',{name:'Dismiss error'}).click();await closeDialog();
   // Restore into a clean browser profile BEFORE selecting a ROM folder.
-  await page.close();const fresh=await browser.newContext({viewport:{width:390,height:844}});page=await fresh.newPage();watch(page);await page.goto(url);await page.getByRole('button',{name:'Choose folder',exact:true}).waitFor({timeout:30000});await page.getByRole('button',{name:'Choose folder',exact:true}).click();
+  await page.close();const fresh=await browser.newContext({viewport:{width:390,height:844}});page=await fresh.newPage();watch(page);await page.goto(url+'play/');await page.getByRole('button',{name:'Choose folder',exact:true}).waitFor({timeout:30000});await page.getByRole('button',{name:'Choose folder',exact:true}).click();
   await page.locator('input[type=file]').setInputFiles(backupPath);await page.getByRole('button',{name:'Import these records',exact:true}).click();await page.getByRole('status').filter({hasText:'3 will match'}).waitFor();assert.equal((await store()).pending.length,3);
   const restored=await page.evaluate(()=>new Promise((resolve,reject)=>{const r=indexedDB.open('games-reducer:/games-reducer/');r.onsuccess=()=>{const db=r.result,q=db.transaction('files').objectStore('files').getAll();q.onsuccess=()=>{db.close();resolve(q.result.map(s=>({key:s.key,bytes:[...s.data.sav]})));};};}));
   assert.equal(restored.length,backup.saves.length);for(const save of backup.saves)assert.deepEqual(restored.find(r=>r.key===save.key).bytes,[...Buffer.from(save.files.sav,'base64')]);
@@ -245,7 +245,7 @@ try{
   await addBattery();await openSettings();await page.getByRole('button',{name:'Reconnect / rescan',exact:true}).click();await page.getByRole('button',{name:'Battery test',exact:true}).click();await playing();await page.waitForTimeout(500);
   await openSettings();const batteryDownloadEvent=page.waitForEvent('download');await page.getByRole('button',{name:'Export backup',exact:true}).click();const batteryPath=path.join(run,'battery-backup.json');await(await batteryDownloadEvent).saveAs(batteryPath);
   assert.deepEqual((await batteryBytes())[0].slice(0,2),[1,0x37]);assert.equal((await batteryBytes())[0].length,8192);
-  await page.close();const batteryContext=await browser.newContext();page=await batteryContext.newPage();watch(page);await page.goto(url);await page.getByRole('button',{name:'Choose folder',exact:true}).click();await page.locator('input[type=file]').setInputFiles(batteryPath);await page.getByRole('button',{name:'Import these records',exact:true}).click();await page.getByRole('status').filter({hasText:'Restored'}).waitFor();
+  await page.close();const batteryContext=await browser.newContext();page=await batteryContext.newPage();watch(page);await page.goto(url+'play/');await page.getByRole('button',{name:'Choose folder',exact:true}).click();await page.locator('input[type=file]').setInputFiles(batteryPath);await page.getByRole('button',{name:'Import these records',exact:true}).click();await page.getByRole('status').filter({hasText:'Restored'}).waitFor();
   assert.deepEqual((await batteryBytes())[0].slice(0,2),[1,0x37]);
   // Importing an older review-only backup must leave existing cartridge data intact.
   const oldBackup=JSON.parse(fs.readFileSync(batteryPath,'utf8'));oldBackup.version=1;delete oldBackup.saves;

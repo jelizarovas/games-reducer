@@ -1,8 +1,13 @@
 import {useEffect,useState} from 'react';
-export const routePath=route=>`${import.meta.env.BASE_URL}${route==='player'?'':`${route}/`}`;
-export function currentRoute(){const path=location.pathname.replace(/\/+$/,'');return path.endsWith('/games')?'games':'player';}
+import {routeName,pathForRoute} from './route-model';
+export const routePath=route=>pathForRoute(route,import.meta.env.BASE_URL);
+export const currentRoute=()=>routeName(location.pathname,location.search,import.meta.env.BASE_URL);
 export function useRoute(){
-  const [route,setRoute]=useState(currentRoute);
-  useEffect(()=>{const pop=()=>setRoute(currentRoute());window.addEventListener('popstate',pop);return()=>window.removeEventListener('popstate',pop);},[]);
-  return [route,next=>{if(next!==currentRoute())history.pushState({},'',routePath(next));setRoute(next);}];
+ const [route,setRoute]=useState(currentRoute);
+ useEffect(()=>{
+  // Preserve old named-game bookmarks while moving the player off the home page.
+  if(currentRoute()==='player'&&!location.pathname.includes('/play'))history.replaceState(history.state,'',routePath('player')+location.search+location.hash);
+  const pop=()=>setRoute(currentRoute());window.addEventListener('popstate',pop);return()=>window.removeEventListener('popstate',pop);
+ },[]);
+ return [route,next=>{if(next!==currentRoute())history.pushState({},'',routePath(next));setRoute(next);}];
 }

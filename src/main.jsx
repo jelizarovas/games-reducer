@@ -10,6 +10,8 @@ import {useGameSelection,SelectionToolbar} from './GameSelection';
 import {pickRomFolder} from './browser-library';
 import {thumbnail} from './assets';
 import {BrowserSettings} from './BrowserSettings';
+import {Dashboard} from './Dashboard.jsx';
+import {nextDashboardGame} from './dashboard-queue';
 import {GamesPage} from './LibraryPages';
 import {useRoute,routePath} from './routes';
 import {findGameInUrl,urlForGame} from './game-url';
@@ -78,6 +80,8 @@ function App() {
     g.title.toLowerCase().includes(query.toLowerCase())), sort), [games, system, category, language, filter, query, sort]);
 
   const selection=useGameSelection(visible);
+  const dashboardNext=useMemo(()=>nextDashboardGame(games,language,selected),[games,language,selected]);
+  function playFromDashboard(game){setSystem('all');setCategory('all');setFilter('unreviewed');setQuery('');selection.clear();playGame(game);}
   useEffect(()=>{
     const game=playing||current;
     if(route!=='player'||!game)return;
@@ -423,17 +427,17 @@ function App() {
     return () => { layout.removeEventListener('change', reveal); cancelAnimationFrame(frame); };
   }, []);
 
-  return <div style={{'--sidebar-width':sidebarWidth+'px','--dock-height':sidebarHidden?'0px':`min(${dockHeight}px, max(128px, calc(100dvh - 212px)))`}} className={`app-shell ${expanded ? 'is-expanded' : ''} ${phase === 'decision' ? 'is-review' : ''}`}>
+  return <div style={{'--sidebar-width':sidebarWidth+'px','--dock-height':sidebarHidden?'0px':`min(${dockHeight}px, max(128px, calc(100dvh - 212px)))`}} className={`app-shell ${route==='home'?'dashboard-header':''} ${expanded ? 'is-expanded' : ''} ${phase === 'decision' ? 'is-review' : ''}`}>
     <header className="topbar">
       <div className="header-context">
       {route==='player'&&<button data-shortcut="Alt+L" className="icon-button sidebar-toggle" aria-label={sidebarHidden?'Show game library':'Hide game library'} title={sidebarHidden?'Show game library':'Hide game library'} aria-expanded={!sidebarHidden} aria-controls="game-library" onClick={()=>setSidebarHidden(value=>!value)}>{sidebarHidden?<PanelLeftOpen size={20}/>:<PanelLeftClose size={20}/>}</button>}
-      <Dropdown label="Console" value={system} onChange={chooseSystem} triggerClassName="brand console-picker" options={Object.entries(consoleNames).map(([value,label])=>({value,label}))}><Gamepad2 size={22}/><span>{system === 'all' ? 'Games' : consoleNames[system]} Reducer</span></Dropdown>
+      {route==='home'?<a className="brand dashboard-brand" href={routePath('home')} onClick={e=>{e.preventDefault();navigate('home');}}><Gamepad2 size={22}/><span>Games Reducer</span></a>:<Dropdown label="Console" value={system} onChange={chooseSystem} triggerClassName="brand console-picker" options={Object.entries(consoleNames).map(([value,label])=>({value,label}))}><Gamepad2 size={22}/><span>{system === 'all' ? 'Games' : consoleNames[system]} Reducer</span></Dropdown>}
       <ChevronRight className="header-separator" size={16}/>
-      <h1 className="header-title" title={current?.title}>{route==='games'?'Games':current?.title || 'Choose a game'}</h1>
+      <h1 className="header-title" title={current?.title}>{route==='home'?'Dashboard':route==='games'?'Games':current?.title || 'Choose a game'}</h1>
       {route==='player'&&<button className="icon-button" aria-label="Game information" title="Game information" disabled={!current} onClick={() => { if (phase === 'playing') review(); setModal('info'); }}><Info size={19}/></button>}
       </div>
-      {route!=='player'&&!selection.count&&<nav className="route-navigation" aria-label="Main navigation">{[['player','Player'],['games','Games']].map(([key,label])=><a key={key} href={routePath(key)} aria-current={route===key?'page':undefined} onClick={e=>{e.preventDefault();navigate(key);}}>{label}</a>)}</nav>}
-      <div className="header-playback" role="group" aria-label="Playback controls" hidden={route!=='player'&&!selection.count}>
+      {route!=='player'&&(route==='home'||!selection.count)&&<nav className="route-navigation" aria-label="Main navigation">{[['home','Home'],['player','Player'],['games','Games']].map(([key,label])=><a key={key} href={routePath(key)} aria-current={route===key?'page':undefined} onClick={e=>{e.preventDefault();navigate(key);}}>{label}</a>)}</nav>}
+      <div className="header-playback" role="group" aria-label="Playback controls" hidden={route==='home'||route!=='player'&&!selection.count}>
       <span className={`header-status ${phase === 'decision' ? 'paused' : 'quiet-status'}`}>{selection.count?`${selection.count} selected`:playing ? phase === 'decision' ? 'Paused' : `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}` : current ? labels[current.status] : ''}</span>
       {(selection.count>0 || phase === 'playing' || phase === 'decision') && <div className="header-decisions" role="group" aria-label={selection.count?`Review ${selection.count} selected games`:'Review game'}>
         <button className="keep" data-shortcut={phase==='decision'?'1':'Alt+1'} aria-label={selection.count?`Keep (${selection.count} selected games)`:'Keep game'} title={selection.count?`Keep: ${selection.count} selected games`:'Keep · A / 1'} disabled={busy||phase==='loading'} onClick={() => reviewDecision('keep')}><Check size={18}/><span>Keep</span></button>
@@ -459,6 +463,7 @@ function App() {
         <SessionMenu onSaveStates={()=>openPanel('states')} canSaveStates={!!playing&&phase!=='loading'&&!busy} showPerformance={showPerformance} onTogglePerformance={()=>setShowPerformance(value=>!value)} onShortcuts={toggleShortcuts} games={games} saveCount={state?.saveCount} onRefresh={()=>refresh().catch(e=>setError(e.message))} onNavigate={navigate} onFinish={finish} onUndo={undo} onController={()=>openPanel('controller')} onSettings={()=>openPanel('settings')} busy={busy}/>
       </div>
     </header>
+    {route==='home'&&<Dashboard games={games} next={dashboardNext} busy={busy} loading={!state} onPlay={playFromDashboard} onBrowse={()=>{selection.clear();setFilter('all');navigate('games');}} onChoose={()=>openPanel('settings')} onSettings={()=>openPanel('settings')}/>}
     {route==='games'&&<GamesPage onDecide={decideSelected} selection={selection} games={visible} query={query} onQuery={setQuery} filter={filter} onFilter={chooseFilter} category={category} onCategory={chooseCategory} categories={categoryOptions} language={language} onLanguage={chooseLanguage} languages={languages} sort={sort} onSort={setSort} onPlay={playGame} busy={busy} onSettings={()=>openPanel('settings')}/>}
     {route!=='player'&&error&&!modal&&<div className="alert error" role="alert">{error}<button aria-label="Dismiss error" onClick={()=>setError('')}><X size={16}/></button></div>}
     <div className={`workspace ${sidebarHidden?'sidebar-hidden':''}`} hidden={route!=='player'}>

@@ -25,6 +25,12 @@ Folder scans check every NES header against the installed mapper registry, inclu
 
 To audit a local collection without modifying ROMs or browser progress, run `node scripts/audit-nes.mjs "C:/RetroBat/roms/nes"`. The report is saved to `test-results/nes-compatibility.json`; an optional second argument chooses another report path.
 
+## Home, player, and library
+
+The home page explains the workflow, shows collection progress, and offers **Play next game**. New users start with **Choose folder**. The next-game queue respects the saved language filter and skips missing or unsupported ROMs.
+
+The player lives at `/play/`, and the grid/list library lives at `/games/` (under `/games-reducer/` on GitHub Pages). Use Home in the **...** menu to return to the dashboard. Leaving the player pauses the game and retains its running instance; returning to play the same game resumes it. Old `?game=...&console=...` bookmarks still open the player. All three routes load directly and work offline after installation.
+
 ## Local progress and backups
 
 IndexedDB stores the folder handle, inventory, keep/remove/later decisions, play time, and undo history. ROMs remain in the chosen folder and are read only for playback or verified cleanup. The app makes no API requests and uploads no ROMs or review data. Only one tab can edit the library at a time.
