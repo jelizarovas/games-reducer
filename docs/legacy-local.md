@@ -94,7 +94,7 @@ npm run test:browser
 
 The browser smoke test needs Chrome at its normal Windows location and five specific Mario/Sonic ROMs in the prepared library. It copies those ROMs into an isolated test folder, uses a separate database/API, injects simulated controller inputs, and only cleans up disposable copies. Set `CHROME_PATH` or `TEST_ROM_ROOT` to override those locations. Evidence is saved under `test-results/browser`. Test files are retained rather than automatically deleted.
 
-Validation on this PC: Genesis, SNES and NES ROMs reached their game screens; controller input opened review, kept/marked games, and advanced to the next ROM; pause stopped emulator callbacks and suspended audio; decisions survived page reload; cleanup moved a test ROM and cleared its game record. Physical controller input and long gameplay sessions still need a hands-on check. No performance claim is made for the Surface Hub.
+Validation on this PC: Genesis, SNES and NES ROMs reached their game screens; controller input opened review, kept/marked games, and advanced to the next ROM; pause stopped emulator callbacks and suspended audio; decisions survived page reload; cleanup moved a test ROM and cleared its game record. Physical controller input and long gameplay sessions still need a hands-on check. Performance varies by device.
 
 ## Emulator provenance
 
