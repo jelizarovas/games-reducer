@@ -1,10 +1,11 @@
+import {SprintSetup,SprintResults} from './SprintPanel';
 import {Play,FolderOpen,Gamepad2,Check,Library,Save} from 'lucide-react';
 import {summarizeGames,playTime} from './progress';
 import {canQueue} from './nes-compatibility';
 import {thumbnail} from './assets';
 import {cardDetails} from './library-view';
 import './dashboard.css';
-export function Dashboard({games,next,busy,loading,onPlay,onBrowse,onChoose,onSettings}){
+export function Dashboard({games,next,busy,loading,onPlay,onBrowse,onChoose,onSettings,onProgressFilter,sprint,available,onSprintStart,onSprintResume,onSprintEnd,canResumeSprint}){
  const progress=summarizeGames(games),percent=progress.total?Math.round(progress.reviewed/progress.total*100):0;
  return <main className="dashboard route-surface" aria-label="Dashboard"><div className="dashboard-content">
   <section className="dashboard-intro">
@@ -20,8 +21,10 @@ export function Dashboard({games,next,busy,loading,onPlay,onBrowse,onChoose,onSe
   </section>
   <section className="dashboard-progress" aria-labelledby="dashboard-progress-title"><div className="dashboard-section-heading"><h2 id="dashboard-progress-title">Your progress</h2><span>{progress.reviewed.toLocaleString()} of {progress.total.toLocaleString()} reviewed</span></div>
    <div className="collection-progress" role="progressbar" aria-label="Collection reviewed" aria-valuenow={percent} aria-valuemin={0} aria-valuemax={100}>{['keep','discard','skip'].map(status=><span key={status} className={`status-${status}`} style={{width:`${progress.total?progress.counts[status]/progress.total*100:0}%`}}/>)}</div>
-   <dl className="dashboard-totals">{[['unreviewed','To try'],['keep','Kept'],['discard','Marked for removal'],['skip','Later']].map(([status,label])=><div key={status} className={`status-${status}`}><dt>{label}</dt><dd>{progress.counts[status].toLocaleString()}</dd></div>)}</dl>
+   <div className="dashboard-totals">{[['unreviewed','To try'],['keep','Kept'],['discard','Marked for removal'],['skip','Later']].map(([status,label])=><div key={status} className={`status-${status}`}><button aria-label={`${label}: ${progress.counts[status]}`} disabled={busy} onClick={()=>onProgressFilter(status)}><span className="progress-label">{label}</span><strong className="progress-count">{progress.counts[status].toLocaleString()}</strong></button></div>)}</div>
    <p className="dashboard-progress-note">{playTime(progress.seconds)} played{progress.missing?` · ${progress.missing} missing files`:''}. Progress is saved in this browser.</p>
+   {sprint&&<SprintResults compact sprint={sprint} busy={busy} canResume={canResumeSprint} onResume={onSprintResume} onEnd={onSprintEnd} onBrowse={onProgressFilter} onNew={()=>document.querySelector('[aria-label="Number of sprint games"]')?.focus()}/>}
+   {sprint?.status!=='active'&&<SprintSetup available={available} busy={busy||loading} onStart={onSprintStart}/>}
   </section>
   <section className="dashboard-guide" aria-labelledby="dashboard-guide-title"><h2 id="dashboard-guide-title">How it works</h2><ol>
    <li><FolderOpen size={22}/><div><h3>Choose your ROM folder</h3><p>Connect your games, then browse by console, category, or language. Games Reducer doesn’t include ROMs.</p></div></li>

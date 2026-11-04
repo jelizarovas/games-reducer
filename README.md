@@ -31,6 +31,14 @@ The home page explains the workflow, shows collection progress, and offers **Pla
 
 The player lives at `/play/`, and the grid/list library lives at `/games/` (under `/games-reducer/` on GitHub Pages). Use Home in the **...** menu to return to the dashboard. Leaving the player pauses the game and retains its running instance; returning to play the same game resumes it. Old `?game=...&console=...` bookmarks still open the player. All three routes load directly and work offline after installation.
 
+## Progress filters and sprints
+
+Click **To try**, **Kept**, **Marked for removal**, or **Later** in the dashboard or menu progress to open the library with that review filter. The filter is part of the `/games/?filter=...` URL, so refresh and browser Back/Forward retain it. Your language selection stays in effect.
+
+Under **Your progress**, choose a sprint size with the slider or number field, then select **Start sprint**. A sprint fixes a batch of unreviewed, launchable games matching your language selection. Keep, Remove, and Later each count once; the header flag shows completed decisions against the target. The final decision stops the queue and opens results. Undo adjusts the sprint too, including reopening a completed batch.
+
+Use the header flag or **... > Current sprint** to resume or end early. The dashboard retains the current or latest sprint and its results. Progress survives a reload and is included in backups; importing an older backup without sprint data leaves the current sprint unchanged. Starting a new sprint replaces the previous sprint summary, while all review decisions remain saved.
+
 ## Local progress and backups
 
 IndexedDB stores the folder handle, inventory, keep/remove/later decisions, play time, and undo history. ROMs remain in the chosen folder and are read only for playback or verified cleanup. The app makes no API requests and uploads no ROMs or review data. Only one tab can edit the library at a time.

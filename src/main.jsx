@@ -1,3 +1,6 @@
+import {SprintResults,SprintBadge} from './SprintPanel';
+import {nextSprintGame} from './sprint';
+import {libraryFilter} from './route-model';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Gamepad2, Search, Play, Check, Trash2, SkipForward, RotateCcw, FolderOpen, X, Download, Pause, Maximize, LoaderCircle, ChevronRight, Settings2, Info, Square, Menu, LogOut, ChevronDown, ArrowDownUp, ListFilter, Volume2, VolumeX, Move } from 'lucide-react';
@@ -41,7 +44,7 @@ const size = bytes => bytes >= 1073741824 ? `${(bytes / 1073741824).toFixed(2)} 
 const Pad = ({ children, tone = '' }) => <span className={`pad ${tone}`}>{children}</span>;
 
 function App() {
-  const [route,setRoute]=useRoute();
+  const [route,setRoute,routeSearch]=useRoute();
   const [showPerformance,setShowPerformance]=useState(()=>localStorage.getItem('games-reducer-show-fps')==='true');
   useEffect(()=>{localStorage.setItem('games-reducer-show-fps',String(showPerformance));},[showPerformance]);
   const activeGame=useRef(null),stopping=useRef(null);
@@ -54,7 +57,7 @@ function App() {
   useEffect(()=>{localStorage.setItem('games-reducer-sidebar-hidden',sidebarHidden);localStorage.setItem('games-reducer-sidebar-width',sidebarWidth);localStorage.setItem('games-reducer-dock-height',dockHeight);localStorage.setItem('games-reducer-sidebar-view',sidebarView);},[sidebarHidden,sidebarWidth,dockHeight,sidebarView]);
   const [blockedScan,setBlockedScan]=useState([]);
   const [state, setState] = useState(null), [games, setGames] = useState([]), [selected, setSelected] = useState(null);
-  const [system, setSystem] = useState('all'), [filter, setFilter] = useState('unreviewed'), [query, setQuery] = useState('');
+  const [system, setSystem] = useState('all'), [filter, setFilter] = useState(()=>libraryFilter(location.search)), [query, setQuery] = useState('');
   const [phase, setPhase] = useState('ready'), [playing, setPlaying] = useState(null), [busy, setBusy] = useState(false);
   const [modal, setModal] = useState(null), [preview, setPreview] = useState(null), [cleanupResult, setCleanupResult] = useState(null);
   const [notice, setNotice] = useState(''), [error, setError] = useState('');
@@ -80,8 +83,20 @@ function App() {
     g.title.toLowerCase().includes(query.toLowerCase())), sort), [games, system, category, language, filter, query, sort]);
 
   const selection=useGameSelection(visible);
-  const dashboardNext=useMemo(()=>nextDashboardGame(games,language,selected),[games,language,selected]);
-  function playFromDashboard(game){setSystem('all');setCategory('all');setFilter('unreviewed');setQuery('');selection.clear();playGame(game);}
+  const sprint=state?.sprint;
+  const sprintQueue=useMemo(()=>sortGames(games.filter(g=>g.status==='unreviewed'&&canQueue(g)&&matchesLanguage(g,language)),'title'),[games,language]);
+  useEffect(()=>{if(route==='games')setFilter(libraryFilter(routeSearch));},[route,routeSearch]);
+  function openProgressFilter(status){if(busy)return;selection.clear();setSystem('all');setCategory('all');setQuery('');setFilter(status);navigate('games',{filter:status});}
+  async function startSprint(count){
+    if(busy)return;setBusy(true);setError('');
+    try{await stopPlayer();const chosen=[...(dashboardNext?[dashboardNext]:[]),...sprintQueue.filter(g=>g.id!==dashboardNext?.id)].slice(0,count);await api('/sprint/start',{ids:chosen.map(g=>g.id)});const {info,all}=await refresh();const next=nextSprintGame(info.sprint,all);if(next)await playFromDashboard(next);}
+    catch(e){setError(e.message);}finally{setBusy(false);}
+  }
+  async function resumeSprint(){const next=nextSprintGame(sprint,games);if(next){setModal(null);playFromDashboard(next);}}
+  async function endSprint(){if(busy)return;setBusy(true);try{await stopPlayer();await api('/sprint/end',{});await refresh();setModal('sprint');}catch(e){setError(e.message);}finally{setBusy(false);}}
+
+  const dashboardNext=useMemo(()=>sprint?.status==='active'?nextSprintGame(sprint,games):nextDashboardGame(games,language,selected),[games,language,selected,sprint]);
+  function playFromDashboard(game){setSystem('all');setCategory('all');setFilter('unreviewed');setQuery('');selection.clear();return playGame(game);}
   useEffect(()=>{
     const game=playing||current;
     if(route!=='player'||!game)return;
@@ -121,7 +136,7 @@ function App() {
   function buttonSpeed(held){turbo.current.ui=held;updateSpeed();}
   function buttonKeySpeed(held){turbo.current.uiKey=held;updateSpeed();}
   function clearKeyboardSpeed(){keyboardSpeed(false);buttonKeySpeed(false);}
-  function navigate(next){if(next!=='player')review();setModal(null);setExpanded(false);setRoute(next);refresh().catch(e=>setError(e.message));}
+  function navigate(next,params){if(next!=='player')review();setModal(null);setExpanded(false);setRoute(next,params||(next==='games'&&filter!=='unreviewed'?{filter}:undefined));refresh().catch(e=>setError(e.message));}
   useEffect(()=>{if(route!=='player'){review();refresh().catch(e=>setError(e.message));}},[route]);
   function review() {
     if (framePhase.current !== 'playing') return;
@@ -161,7 +176,8 @@ function App() {
     try {
       await stopPlayer();
       await api(`/games/${id}/decision`, { status });
-      const { all } = await refresh();
+      const { info, all } = await refresh();
+      if(sprint?.status==='active'){starting.current=false;if(info.sprint?.status==='completed'){setSelected(id);setModal('sprint');return;}const next=nextSprintGame(info.sprint,all);if(next)await playGame(next);else setModal('sprint');return;}
       const ordered = sortGames(all, sort);
       const candidates = ordered.filter(g => matchesConsole(g, system) && matchesCategory(g, category) && matchesLanguage(g, language) && g.status === 'unreviewed' && canQueue(g) && g.id !== id && g.title.toLowerCase().includes(query.toLowerCase()));
       const previousIndex = ordered.findIndex(g => g.id === id);
@@ -179,7 +195,8 @@ function App() {
     const ids=[...selection.selected];setBusy(true);setError('');
     try{
       if(activeGame.current&&ids.includes(activeGame.current.id))await stopPlayer();
-      const result=await api('/games/decisions',{ids,status});const {all}=await refresh();selection.clear();
+      const result=await api('/games/decisions',{ids,status});const {info,all}=await refresh();selection.clear();
+      if(sprint?.status==='active'&&info.sprint?.status==='completed'){await stopPlayer();setModal('sprint');}
       if(!activeGame.current&&ids.includes(selected))setSelected(sortGames(all.filter(g=>canQueue(g)&&matchesConsole(g,system)&&matchesCategory(g,category)&&matchesLanguage(g,language)&&(filter==='all'||g.status===filter)&&g.title.toLowerCase().includes(query.toLowerCase())),sort)[0]?.id);
       setNotice(`${result.count} games ${status==='keep'?'kept':status==='discard'?'marked for removal':'saved for later'}.`);
     }catch(e){setError(e.message);}finally{setBusy(false);}
@@ -268,7 +285,7 @@ function App() {
     setSelected(game?.id); api('/current', { filter: next, id: game?.id }).catch(e => setError(e.message));
   }
   function chooseFilter(next) {
-    setFilter(next);
+    setFilter(next);if(route==='games')setRoute('games',{filter:next});
     if (playing) return;
     const matches = games.filter(g => !isBlocked(g) && matchesConsole(g, system) && matchesCategory(g, category) && matchesLanguage(g, language) && (next === 'all' || g.status === next) && g.title.toLowerCase().includes(query.toLowerCase()));
     if (!matches.some(g => g.id === selected)) {
@@ -438,7 +455,7 @@ function App() {
       </div>
       {route!=='player'&&(route==='home'||!selection.count)&&<nav className="route-navigation" aria-label="Main navigation">{[['home','Home'],['player','Player'],['games','Games']].map(([key,label])=><a key={key} href={routePath(key)} aria-current={route===key?'page':undefined} onClick={e=>{e.preventDefault();navigate(key);}}>{label}</a>)}</nav>}
       <div className="header-playback" role="group" aria-label="Playback controls" hidden={route==='home'||route!=='player'&&!selection.count}>
-      <span className={`header-status ${phase === 'decision' ? 'paused' : 'quiet-status'}`}>{selection.count?`${selection.count} selected`:playing ? phase === 'decision' ? 'Paused' : `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}` : current ? labels[current.status] : ''}</span>
+      {sprint?<SprintBadge sprint={sprint} onClick={()=>openPanel('sprint')}/>:<span className={`header-status ${phase === 'decision' ? 'paused' : 'quiet-status'}`}>{selection.count?`${selection.count} selected`:playing ? phase === 'decision' ? 'Paused' : `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}` : current ? labels[current.status] : ''}</span>}
       {(selection.count>0 || phase === 'playing' || phase === 'decision') && <div className="header-decisions" role="group" aria-label={selection.count?`Review ${selection.count} selected games`:'Review game'}>
         <button className="keep" data-shortcut={phase==='decision'?'1':'Alt+1'} aria-label={selection.count?`Keep (${selection.count} selected games)`:'Keep game'} title={selection.count?`Keep: ${selection.count} selected games`:'Keep · A / 1'} disabled={busy||phase==='loading'} onClick={() => reviewDecision('keep')}><Check size={18}/><span>Keep</span></button>
         <button className="discard" data-shortcut={phase==='decision'?'2':'Alt+2'} aria-label={selection.count?`Mark for removal (${selection.count} selected games)`:'Mark game for removal'} title={selection.count?`Mark for removal: ${selection.count} selected games`:'Mark for removal · B / 2'} disabled={busy||phase==='loading'} onClick={() => reviewDecision('discard')}><Trash2 size={18}/><span>Remove</span></button>
@@ -460,10 +477,10 @@ function App() {
         {expanded && fullscreenHint && <button className="icon-button" aria-label="Enter browser fullscreen" title={fullscreenHint} onClick={nativeFullscreen}><Maximize size={15}/></button>}
         <button className="icon-button" data-shortcut="F" aria-label="Toggle fullscreen" title="Fullscreen · L3 / F" onClick={toggleFullscreen}><Maximize size={19}/></button>
         {controller && <Gamepad2 className="connected header-secondary" size={18} aria-label="Controller connected"/>}
-        <SessionMenu onSaveStates={()=>openPanel('states')} canSaveStates={!!playing&&phase!=='loading'&&!busy} showPerformance={showPerformance} onTogglePerformance={()=>setShowPerformance(value=>!value)} onShortcuts={toggleShortcuts} games={games} saveCount={state?.saveCount} onRefresh={()=>refresh().catch(e=>setError(e.message))} onNavigate={navigate} onFinish={finish} onUndo={undo} onController={()=>openPanel('controller')} onSettings={()=>openPanel('settings')} busy={busy}/>
+        <SessionMenu sprint={sprint} onSprint={()=>openPanel('sprint')} onProgressFilter={openProgressFilter} onSaveStates={()=>openPanel('states')} canSaveStates={!!playing&&phase!=='loading'&&!busy} showPerformance={showPerformance} onTogglePerformance={()=>setShowPerformance(value=>!value)} onShortcuts={toggleShortcuts} games={games} saveCount={state?.saveCount} onRefresh={()=>refresh().catch(e=>setError(e.message))} onNavigate={navigate} onFinish={finish} onUndo={undo} onController={()=>openPanel('controller')} onSettings={()=>openPanel('settings')} busy={busy}/>
       </div>
     </header>
-    {route==='home'&&<Dashboard games={games} next={dashboardNext} busy={busy} loading={!state} onPlay={playFromDashboard} onBrowse={()=>{selection.clear();setFilter('all');navigate('games');}} onChoose={()=>openPanel('settings')} onSettings={()=>openPanel('settings')}/>}
+    {route==='home'&&<Dashboard sprint={sprint} available={sprintQueue.length} onSprintStart={startSprint} onSprintResume={resumeSprint} onSprintEnd={endSprint} canResumeSprint={!!nextSprintGame(sprint,games)} onProgressFilter={openProgressFilter} games={games} next={dashboardNext} busy={busy} loading={!state} onPlay={playFromDashboard} onBrowse={()=>{selection.clear();setFilter('all');navigate('games',{filter:'all'});}} onChoose={()=>openPanel('settings')} onSettings={()=>openPanel('settings')}/>}
     {route==='games'&&<GamesPage onDecide={decideSelected} selection={selection} games={visible} query={query} onQuery={setQuery} filter={filter} onFilter={chooseFilter} category={category} onCategory={chooseCategory} categories={categoryOptions} language={language} onLanguage={chooseLanguage} languages={languages} sort={sort} onSort={setSort} onPlay={playGame} busy={busy} onSettings={()=>openPanel('settings')}/>}
     {route!=='player'&&error&&!modal&&<div className="alert error" role="alert">{error}<button aria-label="Dismiss error" onClick={()=>setError('')}><X size={16}/></button></div>}
     <div className={`workspace ${sidebarHidden?'sidebar-hidden':''}`} hidden={route!=='player'}>
@@ -496,10 +513,10 @@ function App() {
         <span className="sr-only" aria-live="polite">{notice}</span>
       </main>
     </div>
-    {modal && <div className="modal-backdrop" onPointerDown={e => { if(e.target===e.currentTarget && !busy)setModal(null); }}><div className={`modal ${modal === 'shortcuts'?'shortcuts-modal':modal === 'cleanup' ? 'wide' : ''}`} role="dialog" aria-modal="true" aria-label={modal==='states'?'Save states':modal==='scan-results'?'Scan complete':modal === 'shortcuts' ? 'Keyboard shortcuts' : modal === 'cleanup' ? 'Finish session' : modal === 'controller' ? 'Controller menu' : modal === 'info' ? 'Game information' : 'Library settings'} ref={dialog}>
-      <div className="modal-heading"><div><h2>{modal==='states'?'Save states':modal==='scan-results'?'Scan complete':modal === 'shortcuts' ? 'Keyboard shortcuts' : modal === 'cleanup' ? 'Review before cleanup.' : modal === 'controller' ? 'Controller menu' : modal === 'info' ? 'Game information' : 'Library settings'}</h2></div><button className="icon-button" aria-label="Close dialog" disabled={busy} onClick={() => setModal(null)}><X/></button></div>
+    {modal && <div className="modal-backdrop" onPointerDown={e => { if(e.target===e.currentTarget && !busy)setModal(null); }}><div className={`modal ${modal === 'shortcuts'?'shortcuts-modal':modal === 'cleanup' ? 'wide' : ''}`} role="dialog" aria-modal="true" aria-label={modal==='sprint'?'Sprint':modal==='states'?'Save states':modal==='scan-results'?'Scan complete':modal === 'shortcuts' ? 'Keyboard shortcuts' : modal === 'cleanup' ? 'Finish session' : modal === 'controller' ? 'Controller menu' : modal === 'info' ? 'Game information' : 'Library settings'} ref={dialog}>
+      <div className="modal-heading"><div><h2>{modal==='sprint'?'Sprint':modal==='states'?'Save states':modal==='scan-results'?'Scan complete':modal === 'shortcuts' ? 'Keyboard shortcuts' : modal === 'cleanup' ? 'Review before cleanup.' : modal === 'controller' ? 'Controller menu' : modal === 'info' ? 'Game information' : 'Library settings'}</h2></div><button className="icon-button" aria-label="Close dialog" disabled={busy} onClick={() => setModal(null)}><X/></button></div>
       {error && <div className="alert error" role="alert">{error}<button aria-label="Dismiss error" onClick={() => setError('')}><X size={16}/></button></div>}
-      {modal==='states'?(playing?<SaveStates game={playing} player={player} busy={busy} onBusy={setBusy} onResume={()=>{setModal(null);resume();}}/>:<p>Start a game to use save states.</p>):modal==='scan-results'?<ScanResults games={blockedScan} busy={busy} onMark={markBlockedScan} onClose={()=>setModal(null)}/>:modal === 'shortcuts' ? <KeyboardShortcuts system={playing?.system||current?.system||'nes'}/> : modal === 'info' ? <div className="game-info"><img src={thumbnail(current)} alt={`${current?.title} cover`}/><div><h3>{current?.title}</h3><p>{shortSystems[current?.system]} · {size(current?.size || 0)}</p><p>Language: {languageDetails(current||{})}</p>{current?.metadata.description && <p>{current.metadata.description}</p>}<button disabled={!current || mediaBusy || !state?.metadataConfigured} onClick={scrape}><Download size={16}/> Fetch info</button></div></div> : modal === 'controller' ? <ControllerMenu onSaveStates={()=>setModal('states')} canSaveStates={!!playing&&phase!=='loading'} system={system} filter={filter} onSystem={chooseSystem} onFilter={chooseFilter} onFullscreen={toggleFullscreen} onSettings={() => setModal('settings')} onFetch={scrape} canFetch={!!current && !mediaBusy && !!state?.metadataConfigured} onUndo={undo} onFinish={finish} onClose={() => setModal(null)}/> : modal === 'settings' ? <><BrowserSettings state={state} busy={busy} onScan={scan} onStop={stopPlayer} onRefresh={refresh} onError={setError} onFlush={()=>{if(framePhase.current==='loading')throw new Error('Wait for the game to finish loading before exporting.');return player.current?.flushSaves?.();}}/><div className="settings-section"><h3>Controls</h3><p>Browse: D-pad / left stick selects · A plays · LB/RB console · Left/Right filter · LT/RT jumps 20 · X menu · Y undo · Start finish session.</p><p>L3 toggles fullscreen view from any screen. F requests browser fullscreen. In game: hold RT/R2 or Tab for 3× fast forward, release for normal speed. Back + Start opens review. A keeps, B marks, X skips, Y resumes. Release buttons before choosing.</p><p className="help">Keyboard: arrows move; Genesis Z/X/C, A/S/D; SNES Z/X/A/S, D/C shoulders, Right Shift select; NES X/Z, Right Ctrl select. Enter starts games; Esc opens review.</p></div><div className="settings-section"><h3>Missing files</h3><p className="help">After you move games outside this app, scan again. Clear only the records whose files are still missing.</p><button disabled={busy || !games.some(g => g.missing)} onClick={async () => { try { await stopPlayer(); const result = await api('/missing/clear', {}); await refresh(); setNotice(`Cleared ${result.count} missing records.`); } catch (e) { setError(e.message); } }}>Clear missing records</button></div></>
+      {modal==='sprint'?<SprintResults sprint={sprint} busy={busy} canResume={!!nextSprintGame(sprint,games)} onResume={resumeSprint} onEnd={endSprint} onBrowse={openProgressFilter} onNew={()=>navigate('home')}/>:modal==='states'?(playing?<SaveStates game={playing} player={player} busy={busy} onBusy={setBusy} onResume={()=>{setModal(null);resume();}}/>:<p>Start a game to use save states.</p>):modal==='scan-results'?<ScanResults games={blockedScan} busy={busy} onMark={markBlockedScan} onClose={()=>setModal(null)}/>:modal === 'shortcuts' ? <KeyboardShortcuts system={playing?.system||current?.system||'nes'}/> : modal === 'info' ? <div className="game-info"><img src={thumbnail(current)} alt={`${current?.title} cover`}/><div><h3>{current?.title}</h3><p>{shortSystems[current?.system]} · {size(current?.size || 0)}</p><p>Language: {languageDetails(current||{})}</p>{current?.metadata.description && <p>{current.metadata.description}</p>}<button disabled={!current || mediaBusy || !state?.metadataConfigured} onClick={scrape}><Download size={16}/> Fetch info</button></div></div> : modal === 'controller' ? <ControllerMenu onSaveStates={()=>setModal('states')} canSaveStates={!!playing&&phase!=='loading'} system={system} filter={filter} onSystem={chooseSystem} onFilter={chooseFilter} onFullscreen={toggleFullscreen} onSettings={() => setModal('settings')} onFetch={scrape} canFetch={!!current && !mediaBusy && !!state?.metadataConfigured} onUndo={undo} onFinish={finish} onClose={() => setModal(null)}/> : modal === 'settings' ? <><BrowserSettings state={state} busy={busy} onScan={scan} onStop={stopPlayer} onRefresh={refresh} onError={setError} onFlush={()=>{if(framePhase.current==='loading')throw new Error('Wait for the game to finish loading before exporting.');return player.current?.flushSaves?.();}}/><div className="settings-section"><h3>Controls</h3><p>Browse: D-pad / left stick selects · A plays · LB/RB console · Left/Right filter · LT/RT jumps 20 · X menu · Y undo · Start finish session.</p><p>L3 toggles fullscreen view from any screen. F requests browser fullscreen. In game: hold RT/R2 or Tab for 3× fast forward, release for normal speed. Back + Start opens review. A keeps, B marks, X skips, Y resumes. Release buttons before choosing.</p><p className="help">Keyboard: arrows move; Genesis Z/X/C, A/S/D; SNES Z/X/A/S, D/C shoulders, Right Shift select; NES X/Z, Right Ctrl select. Enter starts games; Esc opens review.</p></div><div className="settings-section"><h3>Missing files</h3><p className="help">After you move games outside this app, scan again. Clear only the records whose files are still missing.</p><button disabled={busy || !games.some(g => g.missing)} onClick={async () => { try { await stopPlayer(); const result = await api('/missing/clear', {}); await refresh(); setNotice(`Cleared ${result.count} missing records.`); } catch (e) { setError(e.message); } }}>Clear missing records</button></div></>
       : <>{cleanupResult ? <><p>{cleanupResult.filter(r => r.ok).length} games moved to trash. Their game records and decision history were cleared.</p>{cleanupResult.filter(r => !r.ok).map(r => <p className="red" key={r.id}>{games.find(g => g.id === r.id)?.title || r.id}: {r.error}</p>)}<button className="primary" onClick={() => setModal(null)}>Back to library</button></> : <><p><strong>{preview?.games.length || 0} games</strong> marked · {size(preview?.bytes || 0)}</p><p className="help">Cleanup moves these files to <code>{preview?.trash}</code>. Each move is verified before its game record is cleared. Kept and undecided games stay in your library.</p><div className="cleanup-list">{preview?.games.map(game => <div key={game.id}><span>{game.title}<small>{shortSystems[game.system]} · {size(game.size)}</small></span><button disabled={busy} onClick={async () => { try { await api(`/games/${game.id}/decision`, { status: 'unreviewed' }); await refresh(); setPreview(await api('/cleanup/preview', {})); } catch (e) { setError(e.message); } }}>Unmark</button></div>)}</div><div className="modal-actions"><button disabled={busy} onClick={() => setModal(null)}>Keep reviewing</button><button className="danger" disabled={busy || !preview?.games.length} onClick={cleanup}>{busy ? <LoaderCircle className="spin" size={16}/> : <Trash2 size={16}/>} Move marked games to trash</button></div></> }</>}
     </div></div>}
   </div>;

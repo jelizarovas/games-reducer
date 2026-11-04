@@ -1,3 +1,4 @@
+import {createSprint,syncSprint} from './sprint';
 import {validateStateRecords,unpackState} from './save-state-codec';
 import {batchDecision,pruneReviewHistory} from './review-batch';
 import {SYSTEMS,LIMIT,statuses,cleanTitle,extension,safePath,identity,safeMetadata,decodeRom,validateBackup,validSaveKey} from './browser-core';
@@ -151,7 +152,7 @@ export async function exportBackup(){
   const encode=bytes=>{let text='';for(let i=0;i<bytes.length;i+=8192)text+=String.fromCharCode(...bytes.subarray(i,i+8192));return btoa(text);};
   const saves=records.filter(r=>validSaveKey(r.key)).map(r=>({key:r.key,files:Object.fromEntries(Object.entries(r.data).map(([ext,bytes])=>[ext,encode(new Uint8Array(bytes))]))}));
   const states=await allStates();
-  const backup={format:'games-reducer-backup',version:3,states,exportedAt:new Date().toISOString(),saves,current:library.games.find(g=>g.id===library.current)?identity(game(library.current)):null,games:[...library.games,...library.pending.filter(p=>!library.games.some(g=>identity(g)===identity(p)))].map(g=>({system:g.system,relative_path:g.relative_path,size:g.size,title:g.title,status:g.status,seconds:g.seconds,metadata:safeMetadata(g.metadata)}))};
+  const backup={format:'games-reducer-backup',version:3,states,sprint:library.sprint||null,exportedAt:new Date().toISOString(),saves,current:library.games.find(g=>g.id===library.current)?identity(game(library.current)):null,games:[...library.games,...library.pending.filter(p=>!library.games.some(g=>identity(g)===identity(p)))].map(g=>({system:g.system,relative_path:g.relative_path,size:g.size,title:g.title,status:g.status,seconds:g.seconds,metadata:safeMetadata(g.metadata)}))};
   validateBackup(backup);if(JSON.stringify(backup).length>128*1024*1024)throw new Error('Backup exceeds 128 MB.');return backup;
 }
 export async function importBackup(input){
@@ -159,7 +160,7 @@ export async function importBackup(input){
   const records=new Map(backup.games.map(g=>[identity(g),g]));let matched=0;
   const games=library.games.map(g=>{const record=records.get(identity(g));if(!record)return g;records.delete(identity(g));matched++;return {...g,status:record.status,seconds:record.seconds,metadata:{...g.metadata,...record.metadata}};});
   const pending=new Map(library.pending.map(g=>[identity(g),g]));for(const [key,g]of records)pending.set(key,g);
-  const next={...library,games,pending:[...pending.values()],history:[],pendingCurrent:backup.current,current:games.find(g=>identity(g)===backup.current)?.id||library.current};
+  const next={...library,...(backup.sprint!==undefined?{sprint:backup.sprint}:{}),games,pending:[...pending.values()],history:[],pendingCurrent:backup.current,current:games.find(g=>identity(g)===backup.current)?.id||library.current};
   // Commit the whole import at once; malformed backups never partially apply.
   await new Promise((resolve,reject)=>{
     const tx=db.transaction(['library','files','states'],'readwrite');tx.objectStore('library').put(next,'state');
@@ -213,7 +214,9 @@ export function browserApi(path,body){
 }
 async function dispatch(path,body){
   await init();
-  if(path==='/state'){const saveCount=await new Promise((resolve,reject)=>{const r=db.transaction('files').objectStore('files').count();r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});return {root:library.root?.name||'',connected:!!library.root,trash:library.trash?.name||'',currentId:library.current,metadataConfigured:false,systems:SYSTEMS,stats:[],saveCount,compatibility:compatibilityReport(library.games).counts,playerActive:!!player};}
+  if(path==='/state'){const saveCount=await new Promise((resolve,reject)=>{const r=db.transaction('files').objectStore('files').count();r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});return {root:library.root?.name||'',connected:!!library.root,trash:library.trash?.name||'',currentId:library.current,metadataConfigured:false,systems:SYSTEMS,stats:[],saveCount,compatibility:compatibilityReport(library.games).counts,playerActive:!!player,sprint:library.sprint||null};}
+  if(path==='/sprint/start'){idle();if(library.sprint?.status==='active')throw new Error('Finish or end your current sprint first.');const next={...library,sprint:createSprint(library.games,body?.ids)};await stored('readwrite',next);library=next;return library.sprint;}
+  if(path==='/sprint/end'){idle();if(library.sprint?.status==='active'){const next={...library,sprint:{...library.sprint,status:'ended',finishedAt:Date.now()}};await stored('readwrite',next);library=next;}return library.sprint||null;}
   if(path==='/games')return library.games.map(publicGame);
   if(path==='/compatibility/report')return compatibilityReport(library.games);
   if(path==='/compatibility/mark'){
@@ -228,10 +231,10 @@ async function dispatch(path,body){
   if(path==='/player/start'){if(player)throw new Error('A game is already running.');const g=game(body.id);await permission(library.root);if(g.missing)throw new Error('ROM is missing. Rescan your folder.');if(g.system==='nes'){const file=await g.handle.getFile();g.compatibility=await inspectNesFile(file);await save();if(isBlocked(g))throw new Error(g.compatibility.reason);}player={id:g.id,lastTick:Date.now()};library.current=g.id;await save();return {ok:true};}
   if(path==='/player/stop'){player=null;return {ok:true};}
   if(path==='/player/tick'){if(player?.id===body.id){const now=Date.now();if(body.playing)game(body.id).seconds+=Math.min(10,Math.floor((now-player.lastTick)/1000));player.lastTick=now;await save();}return {ok:true};}
-  if(path==='/games/decisions'){const result=batchDecision(library,body?.ids,body?.status,player?.id);await stored('readwrite',result.next);library=result.next;preview=null;return {count:result.count};}
+  if(path==='/games/decisions'){const result=batchDecision(library,body?.ids,body?.status,player?.id);result.next.sprint=syncSprint(library.sprint,result.next.games);await stored('readwrite',result.next);library=result.next;preview=null;return {count:result.count};}
   const decision=path.match(/^\/games\/([^/]+)\/decision$/);
-  if(decision){idle();if(!statuses.includes(body.status))throw new Error('Invalid review status.');const g=game(decision[1]);library.history.push({id:g.id,before:g.status});g.status=body.status;preview=null;await save();return publicGame(g);}
-  if(path==='/undo'){const last=library.history.pop();if(!last)return null;if(last.batch){for(const item of last.batch)game(item.id).status=item.before;preview=null;await save();return {bulk:true,count:last.batch.length};}const g=game(last.id);g.status=last.before;preview=null;await save();return publicGame(g);}
+  if(decision){idle();if(!statuses.includes(body.status))throw new Error('Invalid review status.');const g=game(decision[1]);library.history.push({id:g.id,before:g.status});g.status=body.status;library.sprint=syncSprint(library.sprint,library.games);preview=null;await save();return publicGame(g);}
+  if(path==='/undo'){const last=library.history.pop();if(!last)return null;if(last.batch){for(const item of last.batch)game(item.id).status=item.before;library.sprint=syncSprint(library.sprint,library.games);preview=null;await save();return {bulk:true,count:last.batch.length};}const g=game(last.id);g.status=last.before;library.sprint=syncSprint(library.sprint,library.games);preview=null;await save();return publicGame(g);}
   if(path==='/cleanup/preview'){idle();const games=library.games.filter(g=>g.status==='discard').map(publicGame);preview={token:crypto.randomUUID(),expires:Date.now()+600000,games};return {...preview,bytes:games.reduce((n,g)=>n+g.size,0),trash:library.trash?.name||'a trash folder you choose'};}
   if(path==='/cleanup/execute')return cleanup(body.token);
   if(path==='/missing/clear'){

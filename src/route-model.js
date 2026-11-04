@@ -6,3 +6,5 @@ export function routeName(pathname,search='',base='/'){
  return 'home';
 }
 export const pathForRoute=(route,base='/')=>`${base}${route==='player'?'play/':route==='games'?'games/':''}`;
+
+export const libraryFilter=search=>{const value=new URLSearchParams(search).get('filter');return ['unreviewed','keep','discard','skip','all'].includes(value)?value:'unreviewed';};

@@ -1,3 +1,4 @@
+import {validateSprint} from './sprint.js';
 import {unzipSync} from 'fflate';
 import {validateStateRecords} from './save-state-codec.js';
 
@@ -48,7 +49,7 @@ export function validateBackup(input) {
   });
   const saves=input.version>=2?validateSaves(input.saves):[];
   const states=input.version===3?validateStateRecords(input.states):[];
-  return {games,saves,states,current:typeof input.current==='string'?input.current:null};
+  return {games,saves,states,sprint:input.version===3&&Object.hasOwn(input,'sprint')?validateSprint(input.sprint):undefined,current:typeof input.current==='string'?input.current:null};
 }
 export const validSaveKey=key=>typeof key==='string'&&/^[a-f0-9]{24}-[^/\\:\x00-\x1f]{1,300}$/.test(key);
 export function validateSaves(saves){

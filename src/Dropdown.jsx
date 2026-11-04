@@ -44,7 +44,7 @@ export function Dropdown({label,value,options=[],onChange,children,triggerClassN
       {children}{showArrow&&<ChevronDown className="dropdown-arrow" size={12}/>}
     </button>
     {open&&createPortal(<div ref={panel} id={id} className="dropdown-panel" style={{...position,width:`min(${width}px, calc(100vw - 16px))`,maxHeight:`min(${maxHeight}px, calc(100dvh - 16px))`}} role={renderPanel?'dialog':menu?'menu':'listbox'} aria-multiselectable={multiple||undefined} aria-label={label} onKeyDown={keys} onKeyUp={e=>e.stopPropagation()}>
-      {panelHeader}
+      {typeof panelHeader==='function'?panelHeader({close:()=>close(true)}):panelHeader}
       {renderPanel?.({close:()=>close(true)})}
       {options.map(option=><button key={option.value} role={menu?'menuitem':'option'} aria-selected={menu?undefined:multiple?value.includes(option.value):value===option.value} disabled={option.disabled} onClick={()=>{if(!multiple)close(true);if(menu)option.onSelect?.();else onChange(option.value);}}>
         {option.icon}<span>{option.label}</span>{!menu&&(multiple?value.includes(option.value):value===option.value)&&<Check size={15}/>}
