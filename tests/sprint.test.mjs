@@ -35,9 +35,9 @@ test('library filter links validate all review states and default safely',()=>{
 });
 
 import {sprintSliderMax,sprintSliderPosition,sprintSliderSize} from '../src/sprint-scale.js';
-test('sprint slider gives small batches space on a logarithmic 1 to 100 scale',()=>{
- assert.equal(sprintSliderMax(2251),100);assert.equal(sprintSliderMax(3),3);assert.equal(sprintSliderMax(0),1);
- assert.equal(sprintSliderSize(500,100),10);assert.equal(sprintSliderSize(0,100),1);assert.equal(sprintSliderSize(1000,100),100);
- for(const max of [1,3,50,100])for(let size=1;size<=max;size++)assert.equal(sprintSliderSize(sprintSliderPosition(size,max),max),size);
- assert.equal(sprintSliderPosition(400,100),1000);assert.equal(sprintSliderSize(1000,1),1);
+test('sprint slider gives small batches space on a logarithmic 5 to 100 scale',()=>{
+ assert.equal(sprintSliderMax(2251),100);assert.equal(sprintSliderMax(3),5);assert.equal(sprintSliderMax(0),5);
+ assert.equal(sprintSliderSize(500,100),22);assert.equal(sprintSliderSize(0,100),5);assert.equal(sprintSliderSize(1000,100),100);
+ for(const max of [5,6,50,100])for(let size=5;size<=max;size++)assert.equal(sprintSliderSize(sprintSliderPosition(size,max),max),size);
+ assert.equal(sprintSliderPosition(400,100),1000);assert.equal(sprintSliderSize(1000,5),5);
 });

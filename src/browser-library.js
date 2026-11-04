@@ -1,4 +1,5 @@
 import {createSprint,syncSprint} from './sprint';
+import {MIN_SPRINT_SIZE} from './sprint-scale';
 import {validateStateRecords,unpackState} from './save-state-codec';
 import {batchDecision,pruneReviewHistory} from './review-batch';
 import {SYSTEMS,LIMIT,statuses,cleanTitle,extension,safePath,identity,safeMetadata,decodeRom,validateBackup,validSaveKey} from './browser-core';
@@ -215,7 +216,7 @@ export function browserApi(path,body){
 async function dispatch(path,body){
   await init();
   if(path==='/state'){const saveCount=await new Promise((resolve,reject)=>{const r=db.transaction('files').objectStore('files').count();r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});return {root:library.root?.name||'',connected:!!library.root,trash:library.trash?.name||'',currentId:library.current,metadataConfigured:false,systems:SYSTEMS,stats:[],saveCount,compatibility:compatibilityReport(library.games).counts,playerActive:!!player,sprint:library.sprint||null};}
-  if(path==='/sprint/start'){idle();if(library.sprint?.status==='active')throw new Error('Finish or end your current sprint first.');const next={...library,sprint:createSprint(library.games,body?.ids)};await stored('readwrite',next);library=next;return library.sprint;}
+  if(path==='/sprint/start'){idle();if(!Array.isArray(body?.ids)||body.ids.length<MIN_SPRINT_SIZE)throw new Error('Choose at least 5 games for a sprint.');if(library.sprint?.status==='active')throw new Error('Finish or end your current sprint first.');const next={...library,sprint:createSprint(library.games,body?.ids)};await stored('readwrite',next);library=next;return library.sprint;}
   if(path==='/sprint/end'){idle();if(library.sprint?.status==='active'){const next={...library,sprint:{...library.sprint,status:'ended',finishedAt:Date.now()}};await stored('readwrite',next);library=next;}return library.sprint||null;}
   if(path==='/games')return library.games.map(publicGame);
   if(path==='/compatibility/report')return compatibilityReport(library.games);

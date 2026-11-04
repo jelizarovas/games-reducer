@@ -1,19 +1,19 @@
 import {useState} from 'react';
 import {Play,Flag,Check,Trash2,SkipForward} from 'lucide-react';
 import {sprintSummary} from './sprint';
-import {sprintSliderMax,sprintSliderPosition,sprintSliderSize} from './sprint-scale';
+import {MIN_SPRINT_SIZE,sprintSliderMax,sprintSliderPosition,sprintSliderSize} from './sprint-scale';
 import './sprint.css';
 export function SprintSetup({available,busy,onStart}){
- const max=Math.max(1,available),[size,setSize]=useState(10),value=size===''?'':Math.min(max,Math.max(1,Number(size)||1));
- const sliderMax=sprintSliderMax(available),position=sprintSliderPosition(value||1,sliderMax),disabled=!available||busy;
- const ticks=[...new Set([1,5,10,25,50,sliderMax])].filter(n=>n<=sliderMax).sort((a,b)=>a-b);
+ const max=Math.max(MIN_SPRINT_SIZE,available),[size,setSize]=useState(10),value=size===''?'':Math.min(max,Math.max(0,Number(size)||0));
+ const sliderMax=sprintSliderMax(available),position=sprintSliderPosition(value||MIN_SPRINT_SIZE,sliderMax),disabled=available<MIN_SPRINT_SIZE||busy;
+ const ticks=[...new Set([5,10,25,50,sliderMax])].filter(n=>n<=sliderMax).sort((a,b)=>a-b);
  function sliderKey(e){
   const changes={ArrowRight:1,ArrowUp:1,ArrowLeft:-1,ArrowDown:-1,PageUp:5,PageDown:-5};
-  if(e.key==='Home'||e.key==='End'||e.key in changes){e.preventDefault();setSize(e.key==='Home'?1:e.key==='End'?sliderMax:Math.min(sliderMax,Math.max(1,(Number(value)||1)+(changes[e.key]||0))));}
+  if(e.key==='Home'||e.key==='End'||e.key in changes){e.preventDefault();setSize(e.key==='Home'?MIN_SPRINT_SIZE:e.key==='End'?sliderMax:Math.min(sliderMax,Math.max(MIN_SPRINT_SIZE,(Number(value)||MIN_SPRINT_SIZE)+(changes[e.key]||0))));}
  }
  return <div className="sprint-setup"><div><h3>Try a sprint</h3><p>Pick a small batch and give each game a verdict.</p></div><div className="sprint-size-controls">
-  <div className="sprint-slider-field"><input aria-label="Sprint size slider" aria-valuetext={`${value||1} games`} type="range" min="0" max="1000" step="1" value={position} style={{'--sprint-fill':`${position/10}%`}} disabled={disabled||sliderMax===1} onKeyDown={sliderKey} onChange={e=>setSize(sprintSliderSize(Number(e.target.value),sliderMax))}/><div className="sprint-slider-ticks" aria-hidden="true">{ticks.map(n=><span key={n} style={{left:`${sprintSliderPosition(n,sliderMax)/10}%`}}>{n}</span>)}</div></div>
-  <label className="sprint-number-field"><input aria-label="Number of sprint games" type="number" min="1" max={max} step="1" value={value} disabled={disabled} onChange={e=>setSize(e.target.value===''?'':Math.floor(Number(e.target.value)))} onBlur={()=>setSize(value||1)}/><span>games</span></label><button className="primary" disabled={disabled||value===''} onClick={()=>onStart(Number(value))}><Flag size={17}/>Start sprint</button></div><small>{available.toLocaleString()} unreviewed games match your language selection.</small></div>;
+  <div className="sprint-slider-field"><input aria-label="Sprint size slider" aria-valuetext={`${Math.max(MIN_SPRINT_SIZE,value||0)} games`} type="range" min="0" max="1000" step="1" value={position} style={{'--sprint-fill':`${position/10}%`}} disabled={disabled||sliderMax===MIN_SPRINT_SIZE} onKeyDown={sliderKey} onChange={e=>setSize(sprintSliderSize(Number(e.target.value),sliderMax))}/><div className="sprint-slider-ticks" aria-hidden="true">{ticks.map(n=><span key={n} style={{left:`${sprintSliderPosition(n,sliderMax)/10}%`}}>{n}</span>)}</div></div>
+  <label className="sprint-number-field"><input aria-label="Number of sprint games" type="number" min={MIN_SPRINT_SIZE} max={max} step="1" value={value} disabled={disabled} onChange={e=>setSize(e.target.value===''?'':Math.floor(Number(e.target.value)))} onBlur={()=>setSize(Math.max(MIN_SPRINT_SIZE,value||0))}/><span>games</span></label><button className="primary" disabled={disabled||value===''||value<MIN_SPRINT_SIZE} onClick={()=>onStart(Number(value))}><Flag size={17}/>Start sprint</button></div><small>{available.toLocaleString()} unreviewed games match your language selection.{available<MIN_SPRINT_SIZE&&' At least 5 are needed for a sprint.'}</small></div>;
 }
 
 export function SprintProgress({sprint}){
