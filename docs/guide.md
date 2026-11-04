@@ -1,0 +1,140 @@
+# Usage and development guide
+
+A browser-only, controller-friendly ROM reviewer. Choose a local folder, try games, keep favorites, and mark the rest for cleanup. No Node server, RetroBat, account, or ROM uploads are required on the device where you play.
+
+## Use on the Surface Hub
+
+1. Open the GitHub Pages URL in current desktop **Edge or Chrome**.
+2. Choose **ROM folder**. Select the folder containing `megadrive`, `snes`, and `nes`, or select one of those console folders directly.
+3. Allow the browser to read that folder. Click a game to play.
+4. Settings, backups, and Finish session are under the **...** menu.
+
+The first visit may reload once while the browser enables the emulator's isolated environment. Folder permission may need to be granted again on a later visit. Use **Reconnect / rescan** in settings. The site must be opened directly over HTTPS (localhost also works), not as a file:// page or inside a restricted embedded browser.
+
+Supported: Genesis / Mega Drive, SNES, and NES cartridge files, plus ZIPs containing exactly one supported ROM. Compressed and expanded cartridge limits are 64 MiB. CD games, PS1, PS2, and 7z collections are not supported.
+
+Use **All languages → English** beside the category filter to focus on English and likely-English releases across consoles. The selection also applies to the next-game queue and `/games`, works offline, and is remembered on this device. Translation tags and explicit language metadata/tags take priority; otherwise ROM region tags provide an estimate. Untagged games remain **Unknown**, and multilingual counts such as `(M5)` alone do not establish English support. Game information explains the language source. Regional estimates and partial translations are not a guarantee that all text is understandable.
+
+Install the published app from **… → Install app** when Chrome/Edge offers installation, or use the browser's install option. In **Settings → Install & offline**, wait for **App and emulators ready offline** before disconnecting. The app, metadata, and all three emulators are cached automatically; covers save as you browse. **Download all covers** saves the full artwork collection (about 70 MB) with resumable progress. ROMs stay in your chosen folder, so keep that folder available on the device. Offline support applies to the production build; Vite development remains uncached.
+
+Updates download in the background and wait while the app is open. **Update & reload** stops the running game, flushes cartridge saves, and activates the update. Closing all app windows also lets a waiting update activate. Clearing browser storage removes both offline downloads and local progress; keep exported backups. Install prompts depend on browser support, and native folder permission may need reconnecting after reopening.
+
+NES support includes a local mapper 33 extension for Taito cartridges such as Golf Ko Open, with PRG/CHR bank switching and mirroring. Other mappers outside JSNES's supported set may still be unsupported.
+
+Folder scans check every NES header against the installed mapper registry, including ROMs inside ZIPs. Unsupported or malformed games are hidden from browsing and excluded from automatic next-game selection. The scan offers to mark them for removal. Files stay unchanged until you confirm cleanup. Existing libraries are checked on reload when folder permission is already granted; otherwise use **Reconnect / rescan**. Settings shows counts and an **Export compatibility report** button. These are header checks, not a gameplay guarantee.
+
+To audit a local collection without modifying ROMs or browser progress, run `node scripts/audit-nes.mjs "C:/RetroBat/roms/nes"`. The report is saved to `test-results/nes-compatibility.json`; an optional second argument chooses another report path.
+
+## Home, player, and library
+
+The home page explains the workflow, shows collection progress, and offers **Play next game**. New users start with **Choose folder**. The next-game queue respects the saved language filter and skips missing or unsupported ROMs.
+
+The player lives at `/play/`, and the grid/list library lives at `/games/` (under `/games-reducer/` on GitHub Pages). Use Home in the **...** menu to return to the dashboard. Leaving the player pauses the game and retains its running instance; returning to play the same game resumes it. Old `?game=...&console=...` bookmarks still open the player. All three routes load directly and work offline after installation.
+
+## Progress filters and sprints
+
+Click **To try**, **Kept**, **Marked for removal**, or **Later** in the dashboard or menu progress to open the library with that review filter. The filter is part of the `/games/?filter=...` URL, so refresh and browser Back/Forward retain it. Your language selection stays in effect.
+
+Under **Your progress**, choose at least five games, then select **Start sprint**. The logarithmic slider covers 5 to 100 games; the number field also accepts larger batches. At least five eligible games must remain. A sprint fixes a batch of unreviewed, launchable games matching your language selection. Keep, Remove, and Later each count once; the header flag shows completed decisions against the target. The final decision stops the queue and opens results. Undo adjusts the sprint too, including reopening a completed batch.
+
+Use the header flag or **... > Current sprint** to resume or end early. The dashboard retains the current or latest sprint and its results. Progress survives a reload and is included in backups; importing an older backup without sprint data leaves the current sprint unchanged. Starting a new sprint replaces the previous sprint summary, while all review decisions remain saved.
+
+## Local progress and backups
+
+IndexedDB stores the folder handle, inventory, keep/remove/later decisions, play time, and undo history. ROMs remain in the chosen folder and are read only for playback or verified cleanup. The app makes no API requests and uploads no ROMs or review data. Only one tab can edit the library at a time.
+
+**Save states** are available for NES, SNES, and Genesis in current Edge/Chrome. While playing, click the Save icon in the header (or **... > Save states**). Each game has three slots: **Save/Overwrite** captures the paused game, and **Load** returns to that point and resumes. Restoring a state also restores its in-game cartridge saves. States are compressed and stored locally, separate from normal cartridge saves. They verify the ROM contents and emulator-state version before loading; use the same ROM version on each device.
+
+**Export backup** downloads a version-three JSON file containing review decisions, play time, metadata, **in-game cartridge saves**, and all **save-state slots**. It waits for pending save writes. **Import backup** validates the whole file, shows a confirmation, and atomically replaces matching review records, cartridge saves, and state slots. Other records remain unchanged. Matching uses console, relative filename, and size, so a backup can move between devices even when the drive letter changes. You may import before picking a folder; unmatched records are retained until scanning finds them. Older version-one/two backups still work and leave existing state slots untouched.
+
+To move between the PC and Hub: capture a save-state slot, open **... > Library settings > Export backup**, and copy the JSON file and your ROM folder to the other device. Open the same site there, import the backup, then choose the copied ROM folder. Keep filenames and console subfolders the same. Launch the game and choose **Save states > Load** for that slot. Export does not automatically capture the current screen; capture a slot first. Games without their own save feature can also use these slots.
+
+Existing Genesis/SNES saves on the same browser origin are copied into the new shared storage without removing the originals. Clearing site data clears review progress, cartridge saves, state slots, and saved folder access. Export before changing browsers, devices, or site URLs. GitHub Pages and localhost are separate storage locations; use export/import to transfer between them. ROM files are never embedded in backups.
+
+The previous desktop SQLite database remains untouched in `data/`. A private migration export was produced in `.validation/desktop-progress-backup.json`; import that file in the browser edition to carry over existing reviews. Neither location is published.
+
+## Metadata and covers
+
+The bundled catalog has 4,544 records with the names, years, descriptions, categories, and artwork already collected on the development PC. There are 3,112 deduplicated WebP covers, approximately 70 MiB in total; images load as needed. No scraper account or runtime metadata service is needed. Unknown years and categories are left blank.
+
+Matching first uses the console and exact relative filename, then a unique cleaned title within that console. Ambiguous matches retain the filename instead of guessing. Local `gamelist.xml` text metadata is imported when present. The old multi-gigabyte image cache and private database are not shipped.
+
+Provenance: [Libretro thumbnails](https://thumbnails.libretro.com/), [Libretro release-year catalog](https://github.com/libretro/libretro-database/tree/master/metadat/releaseyear), [LaunchBox Games Database](https://gamesdb.launchbox-app.com/), and previously imported local gamelists. Attribution is retained in metadata where available.
+
+## Cleanup
+
+Marking a game never changes its ROM. In settings, choose a **trash folder outside the ROM library**. Finish session shows the exact marked files for review. The move operation:
+
+1. Requests write access to the source and destination folders.
+2. Rechecks the original size, modification time, and file handle.
+3. Creates a unique destination, copies the file, and verifies its SHA-256.
+4. Persists a receipt locally and rechecks the source contents.
+5. Removes the verified source, then clears that game's review record and undo entries.
+
+A failed copy or verification keeps the original. A crash may leave a duplicate in trash or a missing record that can be reconciled by rescanning; receipts retain the destination name and hash. Cleanup is not a permanent-delete operation. It never uses the Windows Recycle Bin automatically.
+
+## Controls and browsing
+
+- Click a game to play. D-pad/left stick browses; A plays; LB/RB changes console; LT/RT jumps through the list.
+- Back + Start or Escape pauses for review. Keep, Remove, and Later advance within the active console/category/search queue.
+- Hold the header's **fast-forward button**, RT/R2, or Tab for 3x fast forward; release for normal speed. Mouse and touch holds release even when the pointer leaves the button.
+- L3 or F toggles fullscreen. The header contains mute and complete draggable red P1 / blue P2 controllers.
+- Category, search, sort, and review filters remain usable during gameplay.
+- The icon before the app name shows/hides the sidebar. Drag its right edge to resize it, or the top edge of the bottom dock on small screens. The view icon beside sort/filter toggles cover grid and list. Layout choices are saved in this browser.
+- Press **Shift + /** (`?`) to toggle keyboard shortcuts, or choose **Keyboard shortcuts** from **...**. Hold **Alt** to reveal key badges. Alt+L toggles the sidebar, Alt+V switches its layout, Alt+K focuses search, Alt+G/Alt+P switch screens, Alt+S opens settings, Alt+M toggles sound, and Alt+U undoes a decision. Alt+1/2/3 keep, mark, or skip during play; plain 1/2/3 work when paused. These also work while the WASM game has keyboard focus.
+- Genesis keyboard: **Z/X/C** = A/B/C, **A/S/D** = X/Y/Z. Arrow keys move and Enter starts. SNES/NES mappings and controller/touch button assignments are unchanged. A newly loaded game takes keyboard focus after a review decision.
+- The library scrolls vertically on desktop and docks horizontally at the bottom on narrow screens. The game stays 4:3.
+- **... > Games library** opens `/games/`, with a virtualized cover grid or compact list and the same console, category, review, search, and sort filters. Click a card to play.
+- The **...** menu includes collection progress: reviewed/remaining totals, kept, marked/later games, play time, and cartridge-save count. Switching between the player and games library pauses and preserves the loaded game.
+
+## Development
+
+Node 22.13+ is required only for development/building:
+
+```sh
+npm ci
+npm run dev
+```
+
+This starts **Vite only**, on http://127.0.0.1:3001. HMR is disabled to preserve running games: refresh manually after code edits. `npm run build` emits a static `dist/` directory. `npm start` previews it locally. The old Express/SQLite implementation remains in `server/` solely for reference and metadata/migration tooling; it is not used by the browser edition.
+
+## GitHub Pages
+
+The included `.github/workflows/pages.yml` builds and publishes `dist/`. In repository **Settings > Pages**, use **GitHub Actions** as the publishing source. The workflow derives the correct repository URL prefix from Pages configuration, including custom domains. All asset, engine, and catalog URLs honor that prefix. The build emits a real `games/index.html` entry point so direct links and refreshing the games route work on static hosting.
+
+GitHub Pages does not supply the COOP/COEP headers needed by the WebAssembly audio engine. The same-origin `isolation-sw.js` service worker adds those response headers locally, then the bootstrap reloads once before mounting the app. The worker also caches the app and emulator assets for offline use. ROMs stay in the folder you choose. Open the app online once and wait for offline setup to finish before disconnecting.
+
+Emulator files are served from a content-versioned directory so a returning browser cannot mix a cached engine/save adapter with a newer app. Development maps that directory to the local engine; production builds include the matching static files.
+
+## Verification
+
+```sh
+npm test
+# Build a project-site prefix before the static-host browser test:
+BASE_PATH=/games-reducer/ npm run build
+npm run test:browser
+```
+
+On PowerShell, set `$env:BASE_PATH='/games-reducer/'` before building. Browser checks use installed Chrome and three Mario/Sonic ROMs from `C:/RetroBat/roms`; set `TEST_ROM_ROOT` and `CHROME_PATH` for another development machine. They copy ROM data into disposable browser-private files, substitute the folder picker with real browser directory handles, and never move the original ROMs. The test host serves static files only, with no isolation headers or API.
+
+Coverage includes all three emulators, held fast-forward/release, route transitions without unmounting the game, direct-route loads, desktop/mobile layouts, project-site isolation, metadata, live filters, local persistence, concurrent-tab protection, malformed backup rejection, legacy save migration, byte-for-byte fresh-profile save restore, and verified cleanup on disposable files. An original NES test cartridge increments battery RAM on each boot to verify writes, backup export, import, and loading that save on the next boot. Native operating-system picker prompts and physical Surface Hub/controller performance still need testing on that device.
+
+## Emulator source
+
+Genesis/SNES use a locally patched [jgenesis](https://github.com/jsgroth/jgenesis/tree/c9ff3184cf1515648576a6641c05a11ef4089fb5) WASM cores with independent player-two input. A small headless adapter in `engine-worker/` runs both cores in a dedicated worker and draws through OffscreenCanvas; the previous WebGL frontend remains a fallback for browsers without OffscreenCanvas. NES uses JSNES from npm. The GPL-3.0 license is included at [public/engine/LICENSE](../public/engine/LICENSE). Matching jgenesis source, local changes, bridge, and build scripts are bundled as [public/engine/corresponding-source.zip](../public/engine/corresponding-source.zip); tool versions and the binary hash are in `public/engine/player-two-build.json`. The worker artifact and source hashes are in `public/engine/worker/build.json`. Rebuild it with `bash scripts/build-worker-engine.sh`, then `node scripts/package-worker-engine.mjs` and `node scripts/package-engine-source.mjs` (adjust the local WSL paths as needed). Build tooling is not needed on the Hub.
+
+The public source package omits games and private review data. See [legacy-local.md](legacy-local.md) only for the retired Node edition's historical setup.
+
+## Select games
+
+Use the checkbox beside Search to select all games matching the current filters. Its arrow opens Select all, Clear selection, and Invert selection. Shift-click or hold a game for about half a second to enter selection mode; further clicks toggle selection and Shift-click extends a range. Scrolling cancels a pending long press. Clear selection to return to click-to-play. Selection is shared between the sidebar and Games page; games hidden by a new filter are removed from the selection. Selecting games does not change their review status or files.
+
+Unsupported and invalid ROMs identified by the compatibility scan are hidden from browsing. Scan results offer Yes/No to mark them for removal. No leaves review decisions unchanged; Yes marks them for the normal Finish session cleanup without moving or deleting ROMs during scanning. Existing marked games do not prompt again. The NES check detects unsupported mappers and invalid headers; it is not a guarantee that every other game works.
+
+### Performance counter and playback stability
+
+Use **… → Show FPS counter** to toggle a small overlay; the preference stays in this browser. NES, SNES, and Genesis worker playback report audio buffer depth and detected audio gaps. The FPS reading counts emulated frames. Each core keeps its native timing (roughly 60 FPS for NTSC and 50 FPS for PAL); held fast-forward runs at 3×.
+
+On browsers with OffscreenCanvas support, all three consoles run emulation and drawing in workers. A direct MessageChannel feeds an AudioWorklet at the device sample rate, isolating audio delivery from library rendering and UI stalls. Older browsers retain the inline renderers. SNES/Genesis keep their jgenesis cores, ROM compatibility, two-player mappings, save keys, and cartridge-save compatibility. The gap counter detects buffer starvation, not every possible audible artifact; original NES sprite limits can still produce game-specific flicker.
+
+Worker regression coverage includes original Genesis and SNES test cartridges that increment SRAM across boots, read both controller ports independently, and generate audio at 44.1, 48, and 96 kHz. PAL fixtures verify native timing. Browser tests block the UI for 1.8 seconds and require continued worker frames with zero new audio gaps. These tests do not substitute for listening on the physical Hub.
